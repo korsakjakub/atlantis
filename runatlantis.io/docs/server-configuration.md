@@ -720,6 +720,41 @@ ATLANTIS_FAIL_ON_PRE_WORKFLOW_HOOK_ERROR=true
 
 Fail and do not run the requested Atlantis command if any of the pre workflow hooks error.
 
+### `--fork-drift-redis-key-prefix`
+
+```bash
+atlantis server --fork-drift-redis-key-prefix="atlantis:fork:drift:"
+# or
+ATLANTIS_FORK_DRIFT_REDIS_KEY_PREFIX="atlantis:fork:drift:"
+```
+
+Fork-only. Prefix for every Redis key written when `--fork-drift-storage=redis`.
+Defaults to `atlantis:fork:drift:`.
+
+### `--fork-drift-retention-hours`
+
+```bash
+atlantis server --fork-drift-retention-hours=720
+# or
+ATLANTIS_FORK_DRIFT_RETENTION_HOURS=720
+```
+
+Fork-only. Retention in hours for drift records when `--fork-drift-storage=redis`; records
+expire this long after they were last stored. `0` disables expiry. Defaults to `720`.
+
+### `--fork-drift-storage`
+
+```bash
+atlantis server --enable-drift-detection --fork-drift-storage=redis --redis-host=redis.example.com
+# or
+ATLANTIS_FORK_DRIFT_STORAGE=redis
+```
+
+Fork-only. Storage backend for drift detection results: `memory` (default, lost on restart)
+or `redis`, which reuses the `--redis-*` connection flags so drift results survive restarts.
+When the Redis backend is unreachable, `/api/drift/status` returns `503` and
+`/api/drift/remediate` with `action: "apply"` is rejected. Remediation results remain in memory.
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash

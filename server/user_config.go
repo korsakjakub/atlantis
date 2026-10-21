@@ -149,6 +149,11 @@ type UserConfig struct {
 	WriteGitCreds              bool            `mapstructure:"write-git-creds"`
 	WebsocketCheckOrigin       bool            `mapstructure:"websocket-check-origin"`
 	UseTFPluginCache           bool            `mapstructure:"use-tf-plugin-cache"`
+
+	// fork: drift storage backend.
+	ForkDriftStorage        string `mapstructure:"fork-drift-storage"`
+	ForkDriftRedisKeyPrefix string `mapstructure:"fork-drift-redis-key-prefix"`
+	ForkDriftRetentionHours int    `mapstructure:"fork-drift-retention-hours"`
 }
 
 // ToAllowCommandNames parse AllowCommands into a slice of CommandName

@@ -172,6 +172,9 @@ var testFlags = map[string]any{
 	EnableDriftDetectionFlag:         true,
 	EnableDriftRemediationFlag:       true,
 	EnableProfilingAPI:               false,
+	ForkDriftStorageFlag:             "memory",
+	ForkDriftRedisKeyPrefixFlag:      "atlantis:fork:drift:",
+	ForkDriftRetentionHoursFlag:      720,
 }
 
 func TestExecute_Defaults(t *testing.T) {
