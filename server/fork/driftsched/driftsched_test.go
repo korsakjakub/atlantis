@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -103,13 +104,16 @@ func TestNextRuns_Timezone(t *testing.T) {
 
 // fakeService stands in for the API handlers: detect stores one drifted project.
 type fakeService struct {
+	mu      sync.Mutex
 	storage drift.Storage
 	calls   []string
 	status  int
 }
 
 func (f *fakeService) CallDrift(path string, body []byte) (int, []byte) {
+	f.mu.Lock()
 	f.calls = append(f.calls, path+" "+string(body))
+	f.mu.Unlock()
 	if f.status != 0 {
 		return f.status, []byte("boom")
 	}
@@ -171,6 +175,28 @@ func TestTick_MaxPerRunRotates(t *testing.T) {
 	}
 	if strings.Join(repos, ",") != "o/a,o/b,o/c,o/a" {
 		t.Fatalf("got %v", repos)
+	}
+}
+
+// Different entries tick in separate cron goroutines; run with -race.
+func TestTick_ConcurrentEntries(t *testing.T) {
+	svc := &fakeService{storage: drift.NewInMemoryStorage()}
+	es := []driftsched.Entry{
+		{ID: "a", Repos: []string{"o/a", "o/b", "o/c"}, Cron: "@hourly", Action: "detect", MaxPerRun: 2},
+		{ID: "b", Repos: []string{"o/a", "o/b", "o/c"}, Cron: "@hourly", Action: "detect", MaxPerRun: 2},
+	}
+	r := newReconciler(t, svc, es)
+	var wg sync.WaitGroup
+	for i := range es {
+		wg.Go(func() {
+			for range 10 {
+				r.Tick(&es[i])
+			}
+		})
+	}
+	wg.Wait()
+	if len(svc.calls) != 40 {
+		t.Fatalf("got %d calls", len(svc.calls))
 	}
 }
 

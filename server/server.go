@@ -1300,12 +1300,6 @@ func (s *Server) Start() error {
 
 	if s.DriftScheduler != nil { // fork
 		s.DriftScheduler.Start()
-		defer func() {
-			// Stops new ticks and waits (bounded) for running ones.
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			s.DriftScheduler.Stop(ctx)
-		}()
 	}
 
 	go func() {
@@ -1330,6 +1324,12 @@ func (s *Server) Start() error {
 		}
 	}()
 	<-stop
+
+	if s.DriftScheduler != nil { // fork: no new ticks while draining; wait (bounded) for running ones before the DB closes
+		schedCtx, schedCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		s.DriftScheduler.Stop(schedCtx)
+		schedCancel()
+	}
 
 	s.Logger.Warn("Received interrupt. Waiting for in-progress operations to complete")
 	s.waitForDrain()

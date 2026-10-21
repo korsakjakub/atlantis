@@ -34,6 +34,8 @@ type Entry struct {
 	Ref        string   `yaml:"ref"`         // default "main"
 	BaseBranch string   `yaml:"base_branch"`
 	Type       string   `yaml:"type"` // VCS type, default "Github"
+
+	next int // max_per_run rotation offset, owned by Tick
 }
 
 type file struct {

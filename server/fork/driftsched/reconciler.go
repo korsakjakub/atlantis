@@ -26,12 +26,11 @@ type Reconciler struct {
 	svc     Service
 	log     logging.SimpleLogging
 	crons   []*cron.Cron
-	offsets map[string]int
 }
 
 // New builds a Reconciler; entries must already be validated.
 func New(entries []Entry, svc Service, log logging.SimpleLogging) (*Reconciler, error) {
-	r := &Reconciler{entries: entries, svc: svc, log: log, offsets: map[string]int{}}
+	r := &Reconciler{entries: entries, svc: svc, log: log}
 	byTZ := map[string]*cron.Cron{}
 	for i := range entries {
 		e := &entries[i]
@@ -70,13 +69,14 @@ func (r *Reconciler) Stop(ctx context.Context) {
 	}
 }
 
-// Tick runs one entry once. Not safe to call concurrently for the same entry;
-// SkipIfStillRunning guarantees that for cron-driven calls.
+// Tick runs one entry once. Rotation state lives in the entry, so different
+// entries may tick concurrently; the same entry may not, which
+// SkipIfStillRunning guarantees for cron-driven calls.
 func (r *Reconciler) Tick(e *Entry) {
 	repos := e.Repos
 	if e.MaxPerRun > 0 && e.MaxPerRun < len(repos) {
-		start := r.offsets[e.ID] % len(repos)
-		r.offsets[e.ID] = start + e.MaxPerRun
+		start := e.next % len(repos)
+		e.next = start + e.MaxPerRun
 		repos = make([]string, 0, e.MaxPerRun)
 		for i := range e.MaxPerRun {
 			repos = append(repos, e.Repos[(start+i)%len(e.Repos)])
@@ -113,8 +113,8 @@ func (e *Entry) request(repo string) (string, []byte, error) {
 // cronLogger adapts the Atlantis logger to cron.Logger (used for skipped overlapping runs).
 type cronLogger struct{ l logging.SimpleLogging }
 
-func (c cronLogger) Info(msg string, kv ...any) { c.l.Info("drift scheduler: %s %v", msg, kv) }
+func (c cronLogger) Info(msg string, kv ...any) { c.l.Info("drift scheduler %s %v", msg, kv) }
 
 func (c cronLogger) Error(err error, msg string, kv ...any) {
-	c.l.Err("drift scheduler: %s: %s %v", msg, err, kv)
+	c.l.Err("drift scheduler %s, error %s %v", msg, err, kv)
 }
