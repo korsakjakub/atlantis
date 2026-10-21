@@ -144,7 +144,7 @@ type UserConfig struct {
 	Webhooks                   []WebhookConfig `mapstructure:"webhooks" flag:"false"`
 	WebhookHttpHeaders         string          `mapstructure:"webhook-http-headers"`
 	WebBasicAuth               bool            `mapstructure:"web-basic-auth"`
-	WebUsername                string          `mapstructure:"web-username"`
+	WebUsername               string          `mapstructure:"web-username"`
 	WebPassword                string          `mapstructure:"web-password"`
 	WriteGitCreds              bool            `mapstructure:"write-git-creds"`
 	WebsocketCheckOrigin       bool            `mapstructure:"websocket-check-origin"`
@@ -154,6 +154,11 @@ type UserConfig struct {
 	ForkDriftStorage        string `mapstructure:"fork-drift-storage"`
 	ForkDriftRedisKeyPrefix string `mapstructure:"fork-drift-redis-key-prefix"`
 	ForkDriftRetentionHours int    `mapstructure:"fork-drift-retention-hours"`
+
+	// fork: OIDC login (US-030)
+	ForkOIDC         string `mapstructure:"fork-oidc"`
+	ForkOIDCConfig   string `mapstructure:"fork-oidc-config"`
+	ForkOIDCAPIToken bool   `mapstructure:"fork-oidc-api-token"`
 }
 
 // ToAllowCommandNames parse AllowCommands into a slice of CommandName

@@ -67,6 +67,7 @@ import (
 	"github.com/runatlantis/atlantis/server/events/vcs/github"
 	"github.com/runatlantis/atlantis/server/events/vcs/gitlab"
 	"github.com/runatlantis/atlantis/server/events/webhooks"
+	forkoidc "github.com/runatlantis/atlantis/server/fork/oidc"
 	"github.com/runatlantis/atlantis/server/i18n"
 	"github.com/runatlantis/atlantis/server/logging"
 )
@@ -121,6 +122,7 @@ type Server struct {
 	KeyLastRefreshTime             time.Time
 	SSLCert                        *tls.Certificate
 	Drainer                        *events.Drainer
+	ForkOIDC                       *forkoidc.Manager // fork: nil unless --fork-oidc is set
 	WebAuthentication              bool
 	WebUsername                    string
 	WebPassword                    string
@@ -1203,6 +1205,15 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		database:                       database,
 	}
 
+	// fork: OIDC login (US-030)
+	if server.ForkOIDC, err = newForkOIDC(userConfig, logger); err != nil {
+		return nil, err
+	}
+	if server.ForkOIDC != nil {
+		// OIDC replaces the web basic auth.
+		server.WebAuthentication = false
+	}
+
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
 	err = validate.Struct(server)
@@ -1272,6 +1283,7 @@ func (s *Server) Start() error {
 		StackAll:   false,
 		StackSize:  1024 * 8,
 	}, NewRequestLogger(s))
+	s.useForkOIDC(n) // fork
 	n.UseHandler(s.Router)
 
 	defer s.Logger.Flush()
