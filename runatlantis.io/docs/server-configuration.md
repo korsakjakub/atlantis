@@ -780,6 +780,39 @@ or `redis`, which reuses the `--redis-*` connection flags so drift results survi
 When the Redis backend is unreachable, `/api/drift/status` returns `503` and
 `/api/drift/remediate` with `action: "apply"` is rejected. Remediation results remain in memory.
 
+### `--fork-oidc`
+
+```bash
+atlantis server --fork-oidc=okta
+# or
+ATLANTIS_FORK_OIDC=okta
+```
+
+Fork-only. Enable OIDC login (Authorization Code + PKCE) for the web UI and `/api/*` using the named preset
+from `--fork-oidc-config`, or `off` (default) to keep the current behavior. VCS webhooks and health endpoints are never protected.
+See `fork/docs/oidc.md`.
+
+### `--fork-oidc-api-token`
+
+```bash
+atlantis server --fork-oidc-api-token
+# or
+ATLANTIS_FORK_OIDC_API_TOKEN=true
+```
+
+Fork-only. With `--fork-oidc` enabled, also accept the `X-Atlantis-Token` API secret on `/api/*` without a login session
+(for machine clients). Defaults to `false`.
+
+### `--fork-oidc-config`
+
+```bash
+atlantis server --fork-oidc-config=/etc/atlantis/oidc.yaml
+# or
+ATLANTIS_FORK_OIDC_CONFIG=/etc/atlantis/oidc.yaml
+```
+
+Fork-only. Path to the YAML file defining the OIDC presets (issuer, client ID, scopes, claim map). See `fork/docs/oidc.md`.
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash

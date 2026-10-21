@@ -156,6 +156,11 @@ type UserConfig struct {
 	ForkDriftStorage        string `mapstructure:"fork-drift-storage"`
 	ForkDriftRedisKeyPrefix string `mapstructure:"fork-drift-redis-key-prefix"`
 	ForkDriftRetentionHours int    `mapstructure:"fork-drift-retention-hours"`
+
+	// fork: OIDC login (US-030)
+	ForkOIDC         string `mapstructure:"fork-oidc"`
+	ForkOIDCConfig   string `mapstructure:"fork-oidc-config"`
+	ForkOIDCAPIToken bool   `mapstructure:"fork-oidc-api-token"`
 }
 
 // ToAllowCommandNames parse AllowCommands into a slice of CommandName
