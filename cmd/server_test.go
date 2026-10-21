@@ -63,6 +63,7 @@ var testFlags = map[string]any{
 	ForkOIDCFlag:                     "okta",
 	ForkOIDCConfigFlag:               "/etc/atlantis/oidc.yaml",
 	ForkOIDCAPITokenFlag:             true,
+	ForkSATokensFlag:                 "/etc/atlantis/sa-tokens.yaml",
 	AutoDiscoverModeFlag:             "auto",
 	AutomergeFlag:                    true,
 	AutomergeMethodFlag:              "squash",

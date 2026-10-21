@@ -788,6 +788,19 @@ ATLANTIS_FORK_OIDC_CONFIG=/etc/atlantis/oidc.yaml
 
 Fork-only. Path to the YAML file defining the OIDC presets (issuer, client ID, scopes, claim map). See `fork/docs/oidc.md`.
 
+### `--fork-sa-tokens`
+
+```bash
+atlantis server --api-secret=... --fork-sa-tokens=/etc/atlantis/sa-tokens.yaml
+# or
+ATLANTIS_FORK_SA_TOKENS=/etc/atlantis/sa-tokens.yaml
+```
+
+Fork-only. Path to a YAML file defining scoped service-account tokens for `/api/*`
+(`id`, `secret_sha256`, `actions` of `read`/`plan`/`apply`, `repos` globs). Sent in `X-Atlantis-Token`;
+out-of-scope requests get `403`. The global `--api-secret` keeps full access. Requires `--api-secret`.
+Empty (default) disables it. See `docs/adr/0006-fork-scoped-service-tokens.md`.
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash
