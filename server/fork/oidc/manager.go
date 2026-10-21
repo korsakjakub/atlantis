@@ -28,9 +28,8 @@ const (
 // Options are the runtime dependencies of a Manager.
 type Options struct {
 	Logger logging.SimpleLogging
-	// APISecret is the configured --api-secret. When set, session
-	// authenticated /api/ requests are forwarded to the API controllers with
-	// it, so the controllers' own token check keeps working.
+	// APISecret is the configured --api-secret. /api/ requests must present
+	// it (X-Atlantis-Token) in addition to a session; see AllowAPIToken.
 	APISecret []byte
 	// AllowAPIToken lets /api/ requests that carry a valid X-Atlantis-Token
 	// through without a session (machine clients). Default false.
@@ -51,9 +50,6 @@ type Manager struct {
 	store    *store
 	opts     Options
 	now      func() time.Time
-	// cookies are marked Secure unless the redirect URL is plain http,
-	// which only happens in local development.
-	secureCookie bool
 }
 
 // New performs OIDC discovery for the named preset and returns a Manager.
@@ -92,10 +88,9 @@ func New(ctx context.Context, cfg *Config, preset string, opts Options) (*Manage
 			RedirectURL:  p.RedirectURL,
 			Scopes:       p.Scopes,
 		},
-		store:        newStore(now),
-		opts:         opts,
-		now:          now,
-		secureCookie: ru.Scheme == "https",
+		store: newStore(now),
+		opts:  opts,
+		now:   now,
 	}, nil
 }
 
@@ -125,23 +120,18 @@ func (m *Manager) ServeHTTP(rw http.ResponseWriter, r *http.Request, next http.H
 	}
 
 	if strings.HasPrefix(path, "/api/") {
-		if m.opts.AllowAPIToken && len(m.opts.APISecret) > 0 &&
-			subtle.ConstantTimeCompare([]byte(r.Header.Get(tokenHeader)), m.opts.APISecret) == 1 {
+		// The session is an additional layer, never a replacement for the API
+		// secret: a login alone grants no API access (authorization is US-031).
+		// With no secret configured the API is disabled and the controller answers 503.
+		tokenOK := len(m.opts.APISecret) > 0 &&
+			subtle.ConstantTimeCompare([]byte(r.Header.Get(tokenHeader)), m.opts.APISecret) == 1
+		if (m.opts.AllowAPIToken && tokenOK) || (hasSession && (tokenOK || len(m.opts.APISecret) == 0)) {
 			next(rw, r)
 			return
 		}
-		if !hasSession {
-			rw.Header().Set("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusUnauthorized)
-			_, _ = rw.Write([]byte(`{"error":{"code":"unauthorized","message":"OIDC login required"}}` + "\n"))
-			return
-		}
-		// Never trust a client supplied token on a session request.
-		r.Header.Del(tokenHeader)
-		if len(m.opts.APISecret) > 0 {
-			r.Header.Set(tokenHeader, string(m.opts.APISecret))
-		}
-		next(rw, r)
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusUnauthorized)
+		_, _ = rw.Write([]byte(`{"error":{"code":"unauthorized","message":"OIDC login and API token required"}}` + "\n"))
 		return
 	}
 
@@ -185,12 +175,15 @@ func (m *Manager) login(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verifier := oauth2.GenerateVerifier()
-	m.store.putPending(state, pending{
+	if err := m.store.putPending(state, pending{
 		nonce:    nonce,
 		verifier: verifier,
 		next:     safeNext(r.URL.Query().Get("next")),
 		expires:  m.now().Add(pendingTTL),
-	})
+	}); err != nil {
+		m.fail(rw, http.StatusServiceUnavailable, "login temporarily unavailable", err)
+		return
+	}
 	// Binding the state to the browser prevents login CSRF.
 	http.SetCookie(rw, m.cookie(m.cfg.Session.CookieName+stateCookieExt, state, "/oauth/", m.now().Add(pendingTTL)))
 
@@ -255,6 +248,12 @@ func (m *Manager) callback(rw http.ResponseWriter, r *http.Request) {
 		m.fail(rw, http.StatusUnauthorized, "decoding id token claims", err)
 		return
 	}
+	for k, want := range m.preset.RequiredClaims {
+		if got, _ := claims[k].(string); subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+			m.fail(rw, http.StatusUnauthorized, "id token does not satisfy required claims", fmt.Errorf("claim %q", k))
+			return
+		}
+	}
 	id := m.identity(idt, claims)
 	if id.Subject == "" {
 		m.fail(rw, http.StatusUnauthorized, "id token has no subject", nil)
@@ -273,7 +272,7 @@ func (m *Manager) callback(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Manager) logout(rw http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+	if r.Method != http.MethodPost { // POST only: a GET would allow cross-site forced logout
 		http.Error(rw, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -309,7 +308,7 @@ func (m *Manager) cookie(name, value, path string, expires time.Time) *http.Cook
 		Path:     path,
 		Expires:  expires,
 		HttpOnly: true,
-		Secure:   m.secureCookie,
+		Secure:   !m.cfg.Session.InsecureCookie, // nolint: gosec // always Secure unless session.insecure_cookie (dev only)
 		SameSite: http.SameSiteLaxMode,
 	}
 }
@@ -334,8 +333,16 @@ func (m *Manager) fail(rw http.ResponseWriter, code int, msg string, err error) 
 
 // safeNext only allows same-origin relative redirect targets.
 func safeNext(next string) string {
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/\\") ||
-		strings.HasPrefix(next, loginPrefix) || strings.HasPrefix(next, "/oauth/") {
+	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/oauth/") {
+		return "/"
+	}
+	// Browsers strip tabs/newlines and treat "\" as "/", so reject them anywhere.
+	for i := 0; i < len(next); i++ {
+		if c := next[i]; c < 0x20 || c == 0x7f || c == '\\' {
+			return "/"
+		}
+	}
+	if u, err := url.Parse(next); err != nil || u.Scheme != "" || u.Host != "" {
 		return "/"
 	}
 	return next

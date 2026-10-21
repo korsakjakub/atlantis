@@ -3,6 +3,7 @@ package oidc
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"sync"
 	"time"
 )
@@ -34,6 +35,7 @@ type pending struct {
 // a restart and are not shared between replicas.
 type store struct {
 	mu       sync.Mutex
+	lastGC   time.Time
 	now      func() time.Time
 	sessions map[string]session
 	pendings map[string]pending
@@ -51,9 +53,21 @@ func randomToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// gc must be called with mu held.
-func (s *store) gc() {
+// maxPending bounds unauthenticated logins in flight; login fails closed (503) beyond it.
+const (
+	maxPending = 10000
+	gcInterval = time.Minute
+)
+
+var errTooManyPending = errors.New("too many pending logins")
+
+// gc must be called with mu held. It runs at most once per gcInterval unless force is set.
+func (s *store) gc(force bool) {
 	t := s.now()
+	if !force && t.Sub(s.lastGC) < gcInterval {
+		return
+	}
+	s.lastGC = t
 	for k, v := range s.sessions {
 		if !t.Before(v.expires) {
 			delete(s.sessions, k)
@@ -66,11 +80,18 @@ func (s *store) gc() {
 	}
 }
 
-func (s *store) putPending(state string, p pending) {
+func (s *store) putPending(state string, p pending) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.gc()
+	s.gc(false)
+	if len(s.pendings) >= maxPending {
+		s.gc(true)
+		if len(s.pendings) >= maxPending {
+			return errTooManyPending
+		}
+	}
 	s.pendings[state] = p
+	return nil
 }
 
 // takePending returns and deletes the pending login, so a state value can be
@@ -94,7 +115,7 @@ func (s *store) createSession(id Identity, ttl time.Duration) (string, time.Time
 	exp := s.now().Add(ttl)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.gc()
+	s.gc(false)
 	s.sessions[tok] = session{identity: id, expires: exp}
 	return tok, exp, nil
 }

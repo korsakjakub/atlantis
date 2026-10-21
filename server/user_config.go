@@ -144,7 +144,7 @@ type UserConfig struct {
 	Webhooks                   []WebhookConfig `mapstructure:"webhooks" flag:"false"`
 	WebhookHttpHeaders         string          `mapstructure:"webhook-http-headers"`
 	WebBasicAuth               bool            `mapstructure:"web-basic-auth"`
-	WebUsername               string          `mapstructure:"web-username"`
+	WebUsername                string          `mapstructure:"web-username"`
 	WebPassword                string          `mapstructure:"web-password"`
 	WriteGitCreds              bool            `mapstructure:"write-git-creds"`
 	WebsocketCheckOrigin       bool            `mapstructure:"websocket-check-origin"`

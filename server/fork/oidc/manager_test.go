@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,6 +38,9 @@ type issued struct {
 	nonce     string
 	aud       string
 	expiry    time.Time
+	iss       string         // overrides the issuer claim when set
+	badKey    bool           // sign with a key the JWKS does not publish
+	extra     map[string]any // additional claims
 }
 
 func newFakeIssuer(t *testing.T) *fakeIssuer {
@@ -75,7 +79,11 @@ func (f *fakeIssuer) token(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
 		return
 	}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: f.key},
+	signKey := f.key
+	if c.badKey {
+		signKey, _ = rsa.GenerateKey(rand.Reader, 2048)
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: signKey},
 		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "k1"))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -91,6 +99,12 @@ func (f *fakeIssuer) token(w http.ResponseWriter, r *http.Request) {
 		"email":  "alice@example.com",
 		"name":   "Alice",
 		"groups": []string{"infra", "dev"},
+	}
+	if c.iss != "" {
+		claims["iss"] = c.iss
+	}
+	for k, v := range c.extra {
+		claims[k] = v
 	}
 	raw, err := jwt.Signed(signer).Claims(claims).Serialize()
 	if err != nil {
@@ -134,6 +148,11 @@ type env struct {
 }
 
 func newEnv(t *testing.T, allowToken bool) *env {
+	return newEnvWith(t, allowToken, "", nil)
+}
+
+// newEnvWith adds raw YAML to the preset and optionally overrides the clock.
+func newEnvWith(t *testing.T, allowToken bool, presetExtra string, now func() time.Time) *env {
 	t.Helper()
 	f := newFakeIssuer(t)
 	cfg, err := oidc.ParseConfig([]byte(`
@@ -144,12 +163,13 @@ presets:
     client_id: atlantis
     client_secret: s3cret
     redirect_url: ` + redirectURL + `
-`))
+` + presetExtra))
 	Ok(t, err)
 	mgr, err := oidc.New(t.Context(), cfg, "test", oidc.Options{
 		Logger:        logging.NewNoopLogger(t),
 		APISecret:     []byte("api-secret"),
 		AllowAPIToken: allowToken,
+		Now:           now,
 	})
 	Ok(t, err)
 	e := &env{t: t, issuer: f, mgr: mgr}
@@ -242,7 +262,8 @@ func TestLogin_Success(t *testing.T) {
 	Equals(t, "user-1|alice@example.com|Alice|infra", rr.Header().Get("X-Who"))
 
 	// Logout revokes the session server side: replaying the cookie fails.
-	rr = e.do("GET", "/oauth/logout", []*http.Cookie{sess}, nil)
+	Equals(t, http.StatusMethodNotAllowed, e.do("GET", "/oauth/logout", []*http.Cookie{sess}, nil).Code)
+	rr = e.do("POST", "/oauth/logout", []*http.Cookie{sess}, nil)
 	Equals(t, http.StatusOK, rr.Code)
 	rr = e.do("GET", "/", []*http.Cookie{sess}, nil)
 	Equals(t, http.StatusFound, rr.Code)
@@ -297,10 +318,69 @@ func TestLogin_UnknownPresetAndOpenRedirect(t *testing.T) {
 	e := newEnv(t, false)
 	Equals(t, http.StatusNotFound, e.do("GET", "/oauth/login/other", nil, nil).Code)
 
-	authURL, cookies := e.startLogin("//evil.example/x")
-	code, state := e.issuer.issueCode(authURL, nil)
+	for _, next := range []string{"//evil.example/x", "/\t/evil.com", "/\x00/evil.com", "/a\\b", "/\n/evil.com", "https://evil.com", "/oauth/logout"} {
+		authURL, cookies := e.startLogin(next)
+		code, state := e.issuer.issueCode(authURL, nil)
+		rr := e.callback(code, state, cookies)
+		Equals(t, "/", rr.Header().Get("Location"))
+	}
+}
+
+func TestLogin_RejectsBadSignatureAndForeignIssuer(t *testing.T) {
+	e := newEnv(t, false)
+	for _, mutate := range []func(*issued){
+		func(i *issued) { i.badKey = true },
+		func(i *issued) { i.iss = "https://evil.example" },
+	} {
+		authURL, cookies := e.startLogin("/")
+		code, state := e.issuer.issueCode(authURL, mutate)
+		Equals(t, http.StatusUnauthorized, e.callback(code, state, cookies).Code)
+	}
+}
+
+func TestLogin_RequiredClaims(t *testing.T) {
+	e := newEnvWith(t, false, "    required_claims:\n      hd: example.com\n", nil)
+
+	authURL, cookies := e.startLogin("/")
+	code, state := e.issuer.issueCode(authURL, func(i *issued) { i.extra = map[string]any{"hd": "other.com"} })
 	rr := e.callback(code, state, cookies)
-	Equals(t, "/", rr.Header().Get("Location"))
+	Equals(t, http.StatusUnauthorized, rr.Code)
+	Assert(t, cookieNamed(rr.Result().Cookies(), "atlantis_fork_session") == nil, "no session on failure")
+
+	authURL, cookies = e.startLogin("/")
+	code, state = e.issuer.issueCode(authURL, nil) // claim missing
+	Equals(t, http.StatusUnauthorized, e.callback(code, state, cookies).Code)
+
+	authURL, cookies = e.startLogin("/")
+	code, state = e.issuer.issueCode(authURL, func(i *issued) { i.extra = map[string]any{"hd": "example.com"} })
+	Equals(t, http.StatusFound, e.callback(code, state, cookies).Code)
+}
+
+func TestLogin_PendingLimitFailsClosed(t *testing.T) {
+	e := newEnv(t, false)
+	sess := e.login(nil)
+	for range 10000 {
+		Equals(t, http.StatusFound, e.do("GET", "/oauth/login/test", nil, nil).Code)
+	}
+	Equals(t, http.StatusServiceUnavailable, e.do("GET", "/oauth/login/test", nil, nil).Code)
+	// Existing sessions keep working.
+	Equals(t, http.StatusOK, e.do("GET", "/", sess, nil).Code)
+}
+
+func TestSession_ExpiresAfterTTL(t *testing.T) {
+	var mu sync.Mutex
+	offset := time.Duration(0)
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return time.Now().Add(offset) }
+	e := newEnvWith(t, false, "", now)
+	sess := e.login(nil)
+	Equals(t, http.StatusOK, e.do("GET", "/", sess, nil).Code)
+
+	mu.Lock()
+	offset = 9 * time.Hour // default ttl is 8h
+	mu.Unlock()
+	rr := e.do("GET", "/", sess, nil)
+	Equals(t, http.StatusFound, rr.Code)
+	Assert(t, strings.HasPrefix(rr.Header().Get("Location"), "/oauth/login/test"), "expired session goes back to login")
 }
 
 func TestMiddleware_Exemptions(t *testing.T) {
@@ -323,13 +403,20 @@ func TestMiddleware_UIRedirectsToLogin(t *testing.T) {
 func TestMiddleware_API(t *testing.T) {
 	e := newEnv(t, false)
 
-	// No session: 401, and the machine token is off by default.
+	tok := map[string]string{"X-Atlantis-Token": "api-secret"}
+	// No session: 401, and the machine token alone is off by default.
 	Equals(t, http.StatusUnauthorized, e.do("POST", "/api/plan", nil, nil).Code)
-	Equals(t, http.StatusUnauthorized, e.do("POST", "/api/plan", nil, map[string]string{"X-Atlantis-Token": "api-secret"}).Code)
+	Equals(t, http.StatusUnauthorized, e.do("POST", "/api/plan", nil, tok).Code)
 
-	// Session: allowed, controller sees the configured secret, never the client's.
+	// A login alone grants no API access: apply/remediate still need the secret.
 	sess := e.login(nil)
-	rr := e.do("POST", "/api/plan", sess, map[string]string{"X-Atlantis-Token": "bogus"})
+	for _, p := range []string{"/api/plan", "/api/apply", "/api/drift/remediate"} {
+		Equals(t, http.StatusUnauthorized, e.do("POST", p, sess, nil).Code)
+		Equals(t, http.StatusUnauthorized, e.do("POST", p, sess, map[string]string{"X-Atlantis-Token": "bogus"}).Code)
+	}
+
+	// Session plus the secret is allowed, and the client's token reaches the controller.
+	rr := e.do("POST", "/api/apply", sess, tok)
 	Equals(t, http.StatusOK, rr.Code)
 	Equals(t, "api-secret", rr.Header().Get("X-Seen-Token"))
 	Equals(t, "user-1|alice@example.com|Alice|infra", rr.Header().Get("X-Who"))

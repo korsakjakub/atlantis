@@ -6,6 +6,7 @@ package oidc
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +45,9 @@ type Preset struct {
 	ClaimMap        ClaimMap `yaml:"claim_map"`
 	// AuthParams are extra query parameters for the authorization request.
 	AuthParams map[string]string `yaml:"auth_params"`
+	// RequiredClaims must all match exactly (string claims) in the ID token,
+	// otherwise the login is rejected. Use it to restrict e.g. Google's "hd".
+	RequiredClaims map[string]string `yaml:"required_claims"`
 }
 
 // Config is the on-disk configuration file.
@@ -51,6 +55,9 @@ type Config struct {
 	Session struct {
 		TTL        time.Duration `yaml:"ttl"`
 		CookieName string        `yaml:"cookie_name"`
+		// InsecureCookie drops the Secure cookie attribute. Local development
+		// over plain http only.
+		InsecureCookie bool `yaml:"insecure_cookie"`
 	} `yaml:"session"`
 	Presets map[string]Preset `yaml:"presets"`
 }
@@ -110,7 +117,7 @@ func (p Preset) withDefaults() Preset {
 	if len(p.Scopes) == 0 {
 		p.Scopes = []string{"openid", "profile", "email"}
 	}
-	if !contains(p.Scopes, "openid") {
+	if !slices.Contains(p.Scopes, "openid") {
 		p.Scopes = append([]string{"openid"}, p.Scopes...)
 	}
 	fill := func(dst *string, provider, base string) {
@@ -147,13 +154,4 @@ func (p Preset) secret() string {
 		}
 	}
 	return p.ClientSecret
-}
-
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

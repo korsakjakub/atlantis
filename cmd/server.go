@@ -41,82 +41,77 @@ const (
 // 3. Add your flag's description etc. to the stringFlags, intFlags, or boolFlags slices.
 const (
 	// Flag names.
-	ADWebhookPasswordFlag        = "azuredevops-webhook-password" // nolint: gosec
-	ADWebhookUserFlag            = "azuredevops-webhook-user"
-	ADTokenFlag                  = "azuredevops-token" // nolint: gosec
-	ADUserFlag                   = "azuredevops-user"
-	ADHostnameFlag               = "azuredevops-hostname"
-	AllowCommandsFlag            = "allow-commands"
-	BlockedExtraArgsFlag         = "blocked-extra-args"
-	AllowForkPRsFlag             = "allow-fork-prs"
-	AtlantisURLFlag              = "atlantis-url"
-	AutoDiscoverModeFlag         = "autodiscover-mode"
-	AutomergeFlag                = "automerge"
-	AutomergeMethodFlag          = "automerge-method"
-	ParallelPlanFlag             = "parallel-plan"
-	ParallelApplyFlag            = "parallel-apply"
-	AutoplanModules              = "autoplan-modules"
-	AutoplanModulesFromProjects  = "autoplan-modules-from-projects"
-	AutoplanFileListFlag         = "autoplan-file-list"
-	BitbucketApiUserFlag         = "bitbucket-api-user"
-	BitbucketBaseURLFlag         = "bitbucket-base-url"
-	BitbucketTokenFlag           = "bitbucket-token"
-	BitbucketUserFlag            = "bitbucket-user"
-	BitbucketWebhookSecretFlag   = "bitbucket-webhook-secret"
-	CheckoutDepthFlag            = "checkout-depth"
-	CheckoutStrategyFlag         = "checkout-strategy"
-	ConfigFlag                   = "config"
-	DataDirFlag                  = "data-dir"
-	DefaultTFDistributionFlag    = "default-tf-distribution"
-	DefaultTFVersionFlag         = "default-tf-version"
-	DisableApplyAllFlag          = "disable-apply-all"
-	DisableAutoplanFlag          = "disable-autoplan"
-	DisableAutoplanLabelFlag     = "disable-autoplan-label"
-	DisableAutomergeLabelFlag    = "disable-automerge-label"
-	DisableMarkdownFoldingFlag   = "disable-markdown-folding"
-	DisableRepoLockingFlag       = "disable-repo-locking"
-	DisableGlobalApplyLockFlag   = "disable-global-apply-lock"
-	DisableUnlockLabelFlag       = "disable-unlock-label"
-	DiscardApprovalOnPlanFlag    = "discard-approval-on-plan"
-	EmojiReaction                = "emoji-reaction"
-	EnableDiffMarkdownFormat     = "enable-diff-markdown-format"
-	EnablePolicyChecksFlag       = "enable-policy-checks"
-	EnableRegExpCmdFlag          = "enable-regexp-cmd"
-	EnableProfilingAPI           = "enable-profiling-api"
-	ExecutableName               = "executable-name"
-	FailOnPreWorkflowHookError   = "fail-on-pre-workflow-hook-error"
-	HideUnchangedPlanComments    = "hide-unchanged-plan-comments"
-	GHHostnameFlag               = "gh-hostname"
-	GHTeamAllowlistFlag          = "gh-team-allowlist"
-	GHTokenFlag                  = "gh-token"
-	GHTokenFileFlag              = "gh-token-file" // nolint: gosec
-	GHUserFlag                   = "gh-user"
-	GHAppIDFlag                  = "gh-app-id"
-	GHAppKeyFlag                 = "gh-app-key"
-	GHAppKeyFileFlag             = "gh-app-key-file"
-	GHAppSlugFlag                = "gh-app-slug"
-	GHAppInstallationIDFlag      = "gh-app-installation-id"
-	GHOrganizationFlag           = "gh-org"
-	GHWebhookSecretFlag          = "gh-webhook-secret"               // nolint: gosec
-	GHAllowMergeableBypassApply  = "gh-allow-mergeable-bypass-apply" // nolint: gosec
-	GiteaBaseURLFlag             = "gitea-base-url"
-	GiteaTokenFlag               = "gitea-token"
-	GiteaUserFlag                = "gitea-user"
-	GiteaWebhookSecretFlag       = "gitea-webhook-secret" // nolint: gosec
-	GiteaPageSizeFlag            = "gitea-page-size"
-	GitlabGroupAllowlistFlag     = "gitlab-group-allowlist"
-	GitlabHostnameFlag           = "gitlab-hostname"
-	GitlabTokenFlag              = "gitlab-token"
-	GitlabUserFlag               = "gitlab-user"
-	GitlabWebhookSecretFlag      = "gitlab-webhook-secret" // nolint: gosec
-	GitlabStatusRetryEnabledFlag = "gitlab-status-retry-enabled"
-	IncludeGitUntrackedFiles     = "include-git-untracked-files"
-	APISecretFlag                = "api-secret"
-	// fork: OIDC login (US-030)
-	ForkOIDCFlag         = "fork-oidc"
-	ForkOIDCConfigFlag   = "fork-oidc-config"
-	ForkOIDCAPITokenFlag = "fork-oidc-api-token"
-	// fork: end
+	ADWebhookPasswordFlag            = "azuredevops-webhook-password" // nolint: gosec
+	ADWebhookUserFlag                = "azuredevops-webhook-user"
+	ADTokenFlag                      = "azuredevops-token" // nolint: gosec
+	ADUserFlag                       = "azuredevops-user"
+	ADHostnameFlag                   = "azuredevops-hostname"
+	AllowCommandsFlag                = "allow-commands"
+	BlockedExtraArgsFlag             = "blocked-extra-args"
+	AllowForkPRsFlag                 = "allow-fork-prs"
+	AtlantisURLFlag                  = "atlantis-url"
+	AutoDiscoverModeFlag             = "autodiscover-mode"
+	AutomergeFlag                    = "automerge"
+	AutomergeMethodFlag              = "automerge-method"
+	ParallelPlanFlag                 = "parallel-plan"
+	ParallelApplyFlag                = "parallel-apply"
+	AutoplanModules                  = "autoplan-modules"
+	AutoplanModulesFromProjects      = "autoplan-modules-from-projects"
+	AutoplanFileListFlag             = "autoplan-file-list"
+	BitbucketApiUserFlag             = "bitbucket-api-user"
+	BitbucketBaseURLFlag             = "bitbucket-base-url"
+	BitbucketTokenFlag               = "bitbucket-token"
+	BitbucketUserFlag                = "bitbucket-user"
+	BitbucketWebhookSecretFlag       = "bitbucket-webhook-secret"
+	CheckoutDepthFlag                = "checkout-depth"
+	CheckoutStrategyFlag             = "checkout-strategy"
+	ConfigFlag                       = "config"
+	DataDirFlag                      = "data-dir"
+	DefaultTFDistributionFlag        = "default-tf-distribution"
+	DefaultTFVersionFlag             = "default-tf-version"
+	DisableApplyAllFlag              = "disable-apply-all"
+	DisableAutoplanFlag              = "disable-autoplan"
+	DisableAutoplanLabelFlag         = "disable-autoplan-label"
+	DisableAutomergeLabelFlag        = "disable-automerge-label"
+	DisableMarkdownFoldingFlag       = "disable-markdown-folding"
+	DisableRepoLockingFlag           = "disable-repo-locking"
+	DisableGlobalApplyLockFlag       = "disable-global-apply-lock"
+	DisableUnlockLabelFlag           = "disable-unlock-label"
+	DiscardApprovalOnPlanFlag        = "discard-approval-on-plan"
+	EmojiReaction                    = "emoji-reaction"
+	EnableDiffMarkdownFormat         = "enable-diff-markdown-format"
+	EnablePolicyChecksFlag           = "enable-policy-checks"
+	EnableRegExpCmdFlag              = "enable-regexp-cmd"
+	EnableProfilingAPI               = "enable-profiling-api"
+	ExecutableName                   = "executable-name"
+	FailOnPreWorkflowHookError       = "fail-on-pre-workflow-hook-error"
+	HideUnchangedPlanComments        = "hide-unchanged-plan-comments"
+	GHHostnameFlag                   = "gh-hostname"
+	GHTeamAllowlistFlag              = "gh-team-allowlist"
+	GHTokenFlag                      = "gh-token"
+	GHTokenFileFlag                  = "gh-token-file" // nolint: gosec
+	GHUserFlag                       = "gh-user"
+	GHAppIDFlag                      = "gh-app-id"
+	GHAppKeyFlag                     = "gh-app-key"
+	GHAppKeyFileFlag                 = "gh-app-key-file"
+	GHAppSlugFlag                    = "gh-app-slug"
+	GHAppInstallationIDFlag          = "gh-app-installation-id"
+	GHOrganizationFlag               = "gh-org"
+	GHWebhookSecretFlag              = "gh-webhook-secret"               // nolint: gosec
+	GHAllowMergeableBypassApply      = "gh-allow-mergeable-bypass-apply" // nolint: gosec
+	GiteaBaseURLFlag                 = "gitea-base-url"
+	GiteaTokenFlag                   = "gitea-token"
+	GiteaUserFlag                    = "gitea-user"
+	GiteaWebhookSecretFlag           = "gitea-webhook-secret" // nolint: gosec
+	GiteaPageSizeFlag                = "gitea-page-size"
+	GitlabGroupAllowlistFlag         = "gitlab-group-allowlist"
+	GitlabHostnameFlag               = "gitlab-hostname"
+	GitlabTokenFlag                  = "gitlab-token"
+	GitlabUserFlag                   = "gitlab-user"
+	GitlabWebhookSecretFlag          = "gitlab-webhook-secret" // nolint: gosec
+	GitlabStatusRetryEnabledFlag     = "gitlab-status-retry-enabled"
+	IncludeGitUntrackedFiles         = "include-git-untracked-files"
+	APISecretFlag                    = "api-secret"
 	HidePrevPlanComments             = "hide-prev-plan-comments"
 	QuietPolicyChecks                = "quiet-policy-checks"
 	LockingDBType                    = "locking-db-type"
@@ -437,14 +432,6 @@ var stringFlags = map[string]stringFlag{
 	APISecretFlag: {
 		description: "Secret used to validate requests made to the /api/* endpoints",
 	},
-	// fork: OIDC login (US-030)
-	ForkOIDCFlag: {
-		description: "Enable OIDC login for the web UI and API using the named preset from --fork-oidc-config. Empty or 'off' disables it (default). Fork-only feature.",
-	},
-	ForkOIDCConfigFlag: {
-		description: "Path to the YAML file that defines the OIDC presets. Fork-only feature.",
-	},
-	// fork: end
 	LockingDBType: {
 		description:  "The locking database type to use for storing plan and apply locks.",
 		defaultValue: DefaultLockingDBType,
@@ -708,12 +695,6 @@ var boolFlags = map[string]boolFlag{
 		description:  "Switches on or off the Basic Authentication on the HTTP Middleware interface",
 		defaultValue: DefaultWebBasicAuth,
 	},
-	// fork: OIDC login (US-030)
-	ForkOIDCAPITokenFlag: {
-		description:  "With --fork-oidc enabled, also accept the X-Atlantis-Token API secret on /api/* without a login session (machine clients). Fork-only feature.",
-		defaultValue: false,
-	},
-	// fork: end
 	RestrictFileList: {
 		description:  "Block plan requests from projects outside the files modified in the pull request.",
 		defaultValue: false,

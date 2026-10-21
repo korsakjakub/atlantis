@@ -8,6 +8,7 @@ Native OpenID Connect login (Authorization Code + PKCE) for the web UI and `/api
 ATLANTIS_FORK_OIDC=okta                      # preset name from the config file; "off" (default) disables
 ATLANTIS_FORK_OIDC_CONFIG=/etc/atlantis/oidc.yaml
 ATLANTIS_FORK_OIDC_API_TOKEN=false           # true: /api/* also accepts X-Atlantis-Token without a login
+                                             # (default: /api/* needs a login AND the token; a login alone gives no API access)
 ATLANTIS_API_SECRET=...                      # still required for the API to be enabled at all
 ```
 
@@ -19,7 +20,7 @@ With the flag off Atlantis behaves exactly as upstream (Basic Auth unchanged). W
 | --- | --- |
 | `/oauth/login/<preset>` | Starts the login (`?next=/path` for a same-origin return path) |
 | `/oauth/callback` | Redirect URI to register at the provider |
-| `/oauth/logout` | Revokes the Atlantis session |
+| `/oauth/logout` | Revokes the Atlantis session (POST only) |
 
 `/events`, `/healthz`, `/readyz` and `/status` are never protected, so VCS webhooks are unaffected. Everything else, including `/api/*`, requires a session (UI requests are redirected to the login, API requests get `401`).
 
@@ -46,7 +47,11 @@ presets:
       groups: groups
     auth_params:                            # extra authorization request parameters
       prompt: select_account
+    required_claims:                        # login is rejected unless every claim matches exactly
+      hd: example.com
 ```
+
+`session.insecure_cookie: true` drops the `Secure` cookie attribute for local development over plain http. Never use it in production.
 
 The ID token claims are mapped to `oidc.Identity` and stored in the request context. They are not yet used for authorization (US-031).
 
@@ -91,10 +96,12 @@ presets:
     client_secret_env: OIDC_CLIENT_SECRET
     redirect_url: https://atlantis.example.com/oauth/callback
     auth_params:
-      hd: example.com           # optionally restrict to a Workspace domain
+      hd: example.com           # only a UI hint at Google, it does NOT restrict access
+    required_claims:
+      hd: example.com           # enforced by Atlantis: accounts outside the domain are rejected
 ```
 
-Google ID tokens carry no groups.
+Without `required_claims`, any Google account can log in. Google ID tokens carry no groups.
 
 ### GitLab
 
@@ -137,6 +144,6 @@ presets:
 ## Operational notes
 
 - Sessions are in memory; a restart (or a second replica) requires a new login.
-- Cookies are `HttpOnly`, `Secure`, `SameSite=Lax`. `Secure` is dropped only if `redirect_url` is `http://` (local development).
+- Cookies are `HttpOnly`, `Secure`, `SameSite=Lax`. `Secure` is dropped only with `session.insecure_cookie` (local development).
 - Discovery happens at startup; Atlantis refuses to start if the issuer cannot be reached or the preset is invalid.
 - Logout revokes the Atlantis session only, not the provider session.
