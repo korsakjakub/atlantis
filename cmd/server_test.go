@@ -172,6 +172,8 @@ var testFlags = map[string]any{
 	EnableDriftDetectionFlag:         true,
 	EnableDriftRemediationFlag:       true,
 	EnableProfilingAPI:               false,
+	ForkDriftSchedulerFlag:           "off",
+	ForkDriftScheduleFileFlag:        "",
 	ForkDriftStorageFlag:             "memory",
 	ForkDriftRedisKeyPrefixFlag:      "atlantis:fork:drift:",
 	ForkDriftRetentionHoursFlag:      720,
