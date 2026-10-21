@@ -175,6 +175,8 @@ var testFlags = map[string]any{
 	EnableDriftDetectionFlag:         true,
 	EnableDriftRemediationFlag:       true,
 	EnableProfilingAPI:               false,
+	ForkDriftSchedulerFlag:           "off",
+	ForkDriftScheduleFileFlag:        "",
 	ForkDriftStorageFlag:             "memory",
 	ForkDriftRedisKeyPrefixFlag:      "atlantis:fork:drift:",
 	ForkDriftRetentionHoursFlag:      720,
@@ -1285,6 +1287,43 @@ func TestExecute_ValidateDefaultTFDistribution(t *testing.T) {
 		t.Log("Should validate default tf distribution when " + testCase.description)
 		c := setupWithDefaults(testCase.flags, t)
 		err := c.Execute()
+		if testCase.expectErr != "" {
+			ErrEquals(t, testCase.expectErr, err)
+		} else {
+			Ok(t, err)
+		}
+	}
+}
+
+func TestExecute_ValidateForkDriftScheduler(t *testing.T) {
+	onErr := "--fork-drift-scheduler=on requires --enable-drift-detection, --api-secret and --fork-drift-schedule-file"
+	full := func() map[string]any {
+		return map[string]any{
+			ForkDriftSchedulerFlag:    "on",
+			EnableDriftDetectionFlag:  true,
+			APISecretFlag:             "secret",
+			ForkDriftScheduleFileFlag: "/tmp/s.yaml",
+		}
+	}
+	without := func(k string) map[string]any {
+		f := full()
+		delete(f, k)
+		return f
+	}
+	cases := []struct {
+		description string
+		flags       map[string]any
+		expectErr   string
+	}{
+		{"on with everything", full(), ""},
+		{"on without drift detection", without(EnableDriftDetectionFlag), onErr},
+		{"on without api secret", without(APISecretFlag), onErr},
+		{"on without schedule file", without(ForkDriftScheduleFileFlag), onErr},
+		{"bogus value", map[string]any{ForkDriftSchedulerFlag: "bogus"}, "--fork-drift-scheduler must be one of off or on"},
+	}
+	for _, testCase := range cases {
+		t.Log("Should validate fork drift scheduler when " + testCase.description)
+		err := setupWithDefaults(testCase.flags, t).Execute()
 		if testCase.expectErr != "" {
 			ErrEquals(t, testCase.expectErr, err)
 		} else {

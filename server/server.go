@@ -42,6 +42,7 @@ import (
 	"github.com/runatlantis/atlantis/server/core/redis"
 	"github.com/runatlantis/atlantis/server/core/terraform/tfclient"
 	"github.com/runatlantis/atlantis/server/fork/driftredis"
+	"github.com/runatlantis/atlantis/server/fork/driftsched"
 	"github.com/runatlantis/atlantis/server/jobs"
 	"github.com/runatlantis/atlantis/server/metrics"
 	"github.com/runatlantis/atlantis/server/scheduled"
@@ -128,6 +129,7 @@ type Server struct {
 	WebPassword                    string
 	ProjectCmdOutputHandler        jobs.ProjectCommandOutputHandler
 	ScheduledExecutorService       *scheduled.ExecutorService
+	DriftScheduler                 *driftsched.Reconciler // fork: nil unless --fork-drift-scheduler=on
 	DisableGlobalApplyLock         bool
 	EnableProfilingAPI             bool
 	database                       db.Database
@@ -1108,6 +1110,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		ParallelPoolSize:                userConfig.ParallelPoolSize,
 	}
 
+	var driftScheduler *driftsched.Reconciler
 	if userConfig.EnableDriftDetection {
 		logger.Info("Drift detection is enabled")
 		driftStorage, err := driftredis.Build(userConfig.ForkDriftStorage, driftredis.Config{ // fork: drift storage backend
@@ -1134,6 +1137,17 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 			return nil, fmt.Errorf("initializing drift webhooks: %w", err)
 		}
 		apiController.DriftWebhookSender = driftWebhookSender
+
+		if userConfig.ForkDriftScheduler == "on" { // fork: in-process drift scheduler
+			entries, err := driftsched.LoadFile(userConfig.ForkDriftScheduleFile, userConfig.EnableDriftRemediation)
+			if err != nil {
+				return nil, fmt.Errorf("initializing drift scheduler: %w", err)
+			}
+			driftScheduler, err = driftsched.New(entries, apiController, logger)
+			if err != nil {
+				return nil, fmt.Errorf("initializing drift scheduler: %w", err)
+			}
+		}
 	}
 
 	eventsController := &events_controllers.VCSEventsController{
@@ -1201,6 +1215,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		WebUsername:                    userConfig.WebUsername,
 		WebPassword:                    userConfig.WebPassword,
 		ScheduledExecutorService:       scheduledExecutorService,
+		DriftScheduler:                 driftScheduler,
 		EnableProfilingAPI:             userConfig.EnableProfilingAPI,
 		database:                       database,
 	}
@@ -1295,6 +1310,10 @@ func (s *Server) Start() error {
 
 	go s.ScheduledExecutorService.Run()
 
+	if s.DriftScheduler != nil { // fork
+		s.DriftScheduler.Start()
+	}
+
 	go func() {
 		s.ProjectCmdOutputHandler.Handle()
 	}()
@@ -1317,6 +1336,12 @@ func (s *Server) Start() error {
 		}
 	}()
 	<-stop
+
+	if s.DriftScheduler != nil { // fork: no new ticks while draining; wait (bounded) for running ones before the DB closes
+		schedCtx, schedCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		s.DriftScheduler.Stop(schedCtx)
+		schedCancel()
+	}
 
 	s.Logger.Warn("Received interrupt. Waiting for in-progress operations to complete")
 	s.waitForDrain()

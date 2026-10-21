@@ -742,6 +742,31 @@ ATLANTIS_FORK_DRIFT_RETENTION_HOURS=720
 Fork-only. Retention in hours for drift records when `--fork-drift-storage=redis`; records
 expire this long after they were last stored. `0` disables expiry. Defaults to `720`.
 
+### `--fork-drift-schedule-file`
+
+```bash
+atlantis server --fork-drift-scheduler=on --fork-drift-schedule-file=/etc/atlantis/drift-schedule.yaml
+# or
+ATLANTIS_FORK_DRIFT_SCHEDULE_FILE=/etc/atlantis/drift-schedule.yaml
+```
+
+Fork-only. YAML file with a `schedules:` list (`id`, `repos`, `projects`, `cron`, `tz`,
+`action` = `detect`|`plan`|`apply`, `max_per_run`, `ref`, `base_branch`, `type`).
+See `docs/adr/0006-fork-drift-scheduler.md` in the repository.
+
+### `--fork-drift-scheduler`
+
+```bash
+atlantis server --enable-drift-detection --api-secret=... --fork-drift-scheduler=on
+# or
+ATLANTIS_FORK_DRIFT_SCHEDULER=on
+```
+
+Fork-only. Runs scheduled drift detection/remediation inside the server: `off` (default) or `on`.
+Requires `--enable-drift-detection`, `--api-secret` and `--fork-drift-schedule-file`; a
+malformed schedule aborts startup. **Single replica only**: with several replicas every one
+fires every tick (high availability is tracked as US-070).
+
 ### `--fork-drift-storage`
 
 ```bash

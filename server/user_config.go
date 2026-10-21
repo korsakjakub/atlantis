@@ -151,6 +151,8 @@ type UserConfig struct {
 	UseTFPluginCache           bool            `mapstructure:"use-tf-plugin-cache"`
 
 	// fork: drift storage backend.
+	ForkDriftScheduler      string `mapstructure:"fork-drift-scheduler"`
+	ForkDriftScheduleFile   string `mapstructure:"fork-drift-schedule-file"`
 	ForkDriftStorage        string `mapstructure:"fork-drift-storage"`
 	ForkDriftRedisKeyPrefix string `mapstructure:"fork-drift-redis-key-prefix"`
 	ForkDriftRetentionHours int    `mapstructure:"fork-drift-retention-hours"`

@@ -171,6 +171,9 @@ const (
 	ForkDriftStorageFlag        = "fork-drift-storage"
 	ForkDriftRedisKeyPrefixFlag = "fork-drift-redis-key-prefix"
 	ForkDriftRetentionHoursFlag = "fork-drift-retention-hours"
+	// fork: in-process drift scheduler.
+	ForkDriftSchedulerFlag    = "fork-drift-scheduler"
+	ForkDriftScheduleFileFlag = "fork-drift-schedule-file"
 
 	// NOTE: Must manually set these as defaults in the setDefaults function.
 	DefaultADBasicUser                  = ""
@@ -218,6 +221,21 @@ var stringFlags = map[string]stringFlag{
 	ForkDriftStorageFlag: {
 		description:  "Storage backend for drift detection results: 'memory' or 'redis' (uses the --redis-* flags). Fork-only feature.",
 		defaultValue: "memory",
+	},
+	// fork: OIDC login.
+	ForkOIDCFlag: {
+		description: "Enable OIDC login for the web UI and API using the named preset from --fork-oidc-config. Empty or 'off' disables it (default). Fork-only feature.",
+	},
+	ForkOIDCConfigFlag: {
+		description: "Path to the YAML file that defines the OIDC presets. Fork-only feature.",
+	},
+	// fork: in-process drift scheduler.
+	ForkDriftSchedulerFlag: {
+		description:  "Run scheduled drift detection/remediation inside Atlantis: 'off' or 'on'. Requires --" + EnableDriftDetectionFlag + ", --" + APISecretFlag + " and --" + ForkDriftScheduleFileFlag + ". Single replica only. Fork-only feature.",
+		defaultValue: "off",
+	},
+	ForkDriftScheduleFileFlag: {
+		description: "Path to a YAML file with the drift schedules (see docs/adr/0006-fork-drift-scheduler.md). Fork-only feature.",
 	},
 	ForkDriftRedisKeyPrefixFlag: {
 		description:  "Key prefix for drift records when --" + ForkDriftStorageFlag + "=redis. Fork-only feature.",
@@ -550,6 +568,11 @@ var stringFlags = map[string]stringFlag{
 }
 
 var boolFlags = map[string]boolFlag{
+	// fork: OIDC login.
+	ForkOIDCAPITokenFlag: {
+		description:  "With --fork-oidc enabled, also accept the X-Atlantis-Token API secret on /api/* without a login session (machine clients). Fork-only feature.",
+		defaultValue: false,
+	},
 	AllowForkPRsFlag: {
 		description:  "Allow Atlantis to run on pull requests from forks. A security issue for public repos.",
 		defaultValue: false,
@@ -1050,6 +1073,9 @@ func (s *ServerCmd) setDefaults(c *server.UserConfig, v *viper.Viper) {
 	if c.ForkDriftStorage == "" {
 		c.ForkDriftStorage = "memory"
 	}
+	if c.ForkDriftScheduler == "" {
+		c.ForkDriftScheduler = "off"
+	}
 	if c.ForkDriftRedisKeyPrefix == "" {
 		c.ForkDriftRedisKeyPrefix = "atlantis:fork:drift:"
 	}
@@ -1227,6 +1253,15 @@ func (s *ServerCmd) validate(userConfig server.UserConfig) error {
 		}
 	default:
 		return fmt.Errorf("--%s must be one of memory or redis", ForkDriftStorageFlag)
+	}
+	switch userConfig.ForkDriftScheduler {
+	case "", "off":
+	case "on":
+		if !userConfig.EnableDriftDetection || userConfig.APISecret == "" || userConfig.ForkDriftScheduleFile == "" {
+			return fmt.Errorf("--%s=on requires --%s, --%s and --%s", ForkDriftSchedulerFlag, EnableDriftDetectionFlag, APISecretFlag, ForkDriftScheduleFileFlag)
+		}
+	default:
+		return fmt.Errorf("--%s must be one of off or on", ForkDriftSchedulerFlag)
 	}
 	if userConfig.ForkDriftRetentionHours < 0 {
 		return fmt.Errorf("--%s must not be negative", ForkDriftRetentionHoursFlag)
