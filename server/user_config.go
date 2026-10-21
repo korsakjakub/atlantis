@@ -159,6 +159,10 @@ type UserConfig struct {
 	ForkOIDC         string `mapstructure:"fork-oidc"`
 	ForkOIDCConfig   string `mapstructure:"fork-oidc-config"`
 	ForkOIDCAPIToken bool   `mapstructure:"fork-oidc-api-token"`
+
+	// fork: RBAC (US-031)
+	ForkRBAC       bool   `mapstructure:"fork-rbac"`
+	ForkRBACConfig string `mapstructure:"fork-rbac-config"`
 }
 
 // ToAllowCommandNames parse AllowCommands into a slice of CommandName

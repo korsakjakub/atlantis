@@ -34,6 +34,9 @@ type Options struct {
 	// AllowAPIToken lets /api/ requests that carry a valid X-Atlantis-Token
 	// through without a session (machine clients). Default false.
 	AllowAPIToken bool
+	// Fallback authenticates a request that has no session (break-glass
+	// local accounts, US-031). Optional.
+	Fallback func(*http.Request) (Identity, bool)
 	// HTTPClient is used for discovery and token exchange. Optional.
 	HTTPClient *http.Client
 	// Now overrides the clock. Optional.
@@ -94,6 +97,9 @@ func New(ctx context.Context, cfg *Config, preset string, opts Options) (*Manage
 	}, nil
 }
 
+// SetFallback installs Options.Fallback after construction. Call before serving.
+func (m *Manager) SetFallback(f func(*http.Request) (Identity, bool)) { m.opts.Fallback = f }
+
 // ServeHTTP implements negroni.Handler. It serves the /oauth/ endpoints and
 // protects everything else except VCS webhooks and health endpoints.
 func (m *Manager) ServeHTTP(rw http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
@@ -115,6 +121,9 @@ func (m *Manager) ServeHTTP(rw http.ResponseWriter, r *http.Request, next http.H
 	}
 
 	id, hasSession := m.sessionIdentity(r)
+	if !hasSession && m.opts.Fallback != nil {
+		id, hasSession = m.opts.Fallback(r)
+	}
 	if hasSession {
 		r = r.WithContext(WithIdentity(r.Context(), id))
 	}

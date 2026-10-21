@@ -68,6 +68,7 @@ import (
 	"github.com/runatlantis/atlantis/server/events/vcs/gitlab"
 	"github.com/runatlantis/atlantis/server/events/webhooks"
 	forkoidc "github.com/runatlantis/atlantis/server/fork/oidc"
+	"github.com/runatlantis/atlantis/server/fork/rbac"
 	"github.com/runatlantis/atlantis/server/i18n"
 	"github.com/runatlantis/atlantis/server/logging"
 )
@@ -123,6 +124,7 @@ type Server struct {
 	SSLCert                        *tls.Certificate
 	Drainer                        *events.Drainer
 	ForkOIDC                       *forkoidc.Manager // fork: nil unless --fork-oidc is set
+	ForkRBAC                       *rbac.Engine      // fork: nil unless --fork-rbac is set
 	WebAuthentication              bool
 	WebUsername                    string
 	WebPassword                    string
@@ -1012,6 +1014,15 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		}
 	}
 
+	// fork: RBAC (US-031). Built before OIDC because break-glass login hooks into it.
+	forkRBAC, err := newForkRBAC(userConfig)
+	if err != nil {
+		return nil, err
+	}
+	if forkRBAC != nil {
+		teamAllowlistChecker = &rbac.CommandChecker{Inner: teamAllowlistChecker, Engine: forkRBAC}
+	}
+
 	varFileAllowlistChecker, err := events.NewVarFileAllowlistChecker(userConfig.VarFileAllowlist)
 	if err != nil {
 		return nil, err
@@ -1206,8 +1217,12 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	}
 
 	// fork: OIDC login (US-030)
+	server.ForkRBAC = forkRBAC
 	if server.ForkOIDC, err = newForkOIDC(userConfig, logger); err != nil {
 		return nil, err
+	}
+	if forkRBAC != nil && server.ForkOIDC != nil {
+		server.ForkOIDC.SetFallback(forkRBAC.Authenticate) // break-glass local accounts
 	}
 	if server.ForkOIDC != nil {
 		// OIDC replaces the web basic auth.
