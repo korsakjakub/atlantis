@@ -752,7 +752,7 @@ ATLANTIS_FORK_DRIFT_SCHEDULE_FILE=/etc/atlantis/drift-schedule.yaml
 
 Fork-only. YAML file with a `schedules:` list (`id`, `repos`, `projects`, `cron`, `tz`,
 `action` = `detect`|`plan`|`apply`, `max_per_run`, `ref`, `base_branch`, `type`).
-See [ADR 6](https://github.com/korsakjakub/atlantis/blob/main/docs/adr/0006-fork-drift-scheduler.md).
+See `docs/adr/0006-fork-drift-scheduler.md` in the repository.
 
 ### `--fork-drift-scheduler`
 

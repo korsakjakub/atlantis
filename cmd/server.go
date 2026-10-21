@@ -222,6 +222,13 @@ var stringFlags = map[string]stringFlag{
 		description:  "Storage backend for drift detection results: 'memory' or 'redis' (uses the --redis-* flags). Fork-only feature.",
 		defaultValue: "memory",
 	},
+	// fork: OIDC login.
+	ForkOIDCFlag: {
+		description: "Enable OIDC login for the web UI and API using the named preset from --fork-oidc-config. Empty or 'off' disables it (default). Fork-only feature.",
+	},
+	ForkOIDCConfigFlag: {
+		description: "Path to the YAML file that defines the OIDC presets. Fork-only feature.",
+	},
 	// fork: in-process drift scheduler.
 	ForkDriftSchedulerFlag: {
 		description:  "Run scheduled drift detection/remediation inside Atlantis: 'off' or 'on'. Requires --" + EnableDriftDetectionFlag + ", --" + APISecretFlag + " and --" + ForkDriftScheduleFileFlag + ". Single replica only. Fork-only feature.",
@@ -561,6 +568,11 @@ var stringFlags = map[string]stringFlag{
 }
 
 var boolFlags = map[string]boolFlag{
+	// fork: OIDC login.
+	ForkOIDCAPITokenFlag: {
+		description:  "With --fork-oidc enabled, also accept the X-Atlantis-Token API secret on /api/* without a login session (machine clients). Fork-only feature.",
+		defaultValue: false,
+	},
 	AllowForkPRsFlag: {
 		description:  "Allow Atlantis to run on pull requests from forks. A security issue for public repos.",
 		defaultValue: false,

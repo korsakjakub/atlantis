@@ -302,19 +302,19 @@ func (m *Manager) identity(idt *gooidc.IDToken, claims map[string]any) Identity 
 }
 
 func (m *Manager) cookie(name, value, path string, expires time.Time) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ // nolint: gosec // Secure is always set unless session.insecure_cookie (dev only)
 		Name:     name,
 		Value:    value,
 		Path:     path,
 		Expires:  expires,
 		HttpOnly: true,
-		Secure:   !m.cfg.Session.InsecureCookie, // nolint: gosec // always Secure unless session.insecure_cookie (dev only)
+		Secure:   !m.cfg.Session.InsecureCookie,
 		SameSite: http.SameSiteLaxMode,
 	}
 }
 
 func (m *Manager) expire(name, path string) *http.Cookie {
-	c := m.cookie(name, "", path, time.Unix(0, 0))
+	c := m.cookie(name, "", path, time.Unix(0, 0)) // nolint: gosec // attributes set in cookie()
 	c.MaxAge = -1
 	return c
 }
