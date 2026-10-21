@@ -167,6 +167,11 @@ const (
 	EnableDriftRemediationFlag       = "enable-drift-remediation"
 	WebsocketCheckOrigin             = "websocket-check-origin"
 
+	// fork: drift storage backend (see fork/README.md and docs/adr).
+	ForkDriftStorageFlag        = "fork-drift-storage"
+	ForkDriftRedisKeyPrefixFlag = "fork-drift-redis-key-prefix"
+	ForkDriftRetentionHoursFlag = "fork-drift-retention-hours"
+
 	// NOTE: Must manually set these as defaults in the setDefaults function.
 	DefaultADBasicUser                  = ""
 	DefaultADBasicPassword              = ""
@@ -209,6 +214,15 @@ const (
 )
 
 var stringFlags = map[string]stringFlag{
+	// fork: drift storage backend.
+	ForkDriftStorageFlag: {
+		description:  "Storage backend for drift detection results: 'memory' or 'redis' (uses the --redis-* flags). Fork-only feature.",
+		defaultValue: "memory",
+	},
+	ForkDriftRedisKeyPrefixFlag: {
+		description:  "Key prefix for drift records when --" + ForkDriftStorageFlag + "=redis. Fork-only feature.",
+		defaultValue: "atlantis:fork:drift:",
+	},
 	ADTokenFlag: {
 		description: "Azure DevOps token of API user. Can also be specified via the ATLANTIS_AZUREDEVOPS_TOKEN environment variable.",
 	},
@@ -707,6 +721,11 @@ var boolFlags = map[string]boolFlag{
 	},
 }
 var intFlags = map[string]intFlag{
+	// fork: drift storage backend.
+	ForkDriftRetentionHoursFlag: {
+		description:  "Retention in hours for drift records when --" + ForkDriftStorageFlag + "=redis. 0 disables expiry. Fork-only feature.",
+		defaultValue: 720,
+	},
 	CheckoutDepthFlag: {
 		description: fmt.Sprintf("Used only if --%s=%s.", CheckoutStrategyFlag, CheckoutStrategyMerge) +
 			" How many commits to include in each of base and feature branches when cloning repository." +
@@ -1027,6 +1046,16 @@ func (s *ServerCmd) setDefaults(c *server.UserConfig, v *viper.Viper) {
 	if c.MarkdownTemplateOverridesDir == "" {
 		c.MarkdownTemplateOverridesDir = DefaultMarkdownTemplateOverridesDir
 	}
+	// fork: drift storage backend.
+	if c.ForkDriftStorage == "" {
+		c.ForkDriftStorage = "memory"
+	}
+	if c.ForkDriftRedisKeyPrefix == "" {
+		c.ForkDriftRedisKeyPrefix = "atlantis:fork:drift:"
+	}
+	if !v.IsSet(ForkDriftRetentionHoursFlag) {
+		c.ForkDriftRetentionHours = 720
+	}
 	if !v.IsSet("max-comments-per-command") {
 		c.MaxCommentsPerCommand = DefaultMaxCommentsPerCommand
 	}
@@ -1187,6 +1216,20 @@ func (s *ServerCmd) validate(userConfig server.UserConfig) error {
 
 	if userConfig.TFEHostname != DefaultTFEHostname && userConfig.TFEToken == "" {
 		return fmt.Errorf("if setting --%s, must set --%s", TFEHostnameFlag, TFETokenFlag)
+	}
+
+	// fork: drift storage backend.
+	switch userConfig.ForkDriftStorage {
+	case "", "memory":
+	case "redis":
+		if userConfig.RedisHost == "" && userConfig.RedisClusterAddresses == "" {
+			return fmt.Errorf("--%s=redis requires --%s or --%s", ForkDriftStorageFlag, RedisHost, RedisClusterAddresses)
+		}
+	default:
+		return fmt.Errorf("--%s must be one of memory or redis", ForkDriftStorageFlag)
+	}
+	if userConfig.ForkDriftRetentionHours < 0 {
+		return fmt.Errorf("--%s must not be negative", ForkDriftRetentionHoursFlag)
 	}
 
 	if userConfig.RedisClusterAddresses != "" {

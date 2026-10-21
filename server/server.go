@@ -41,6 +41,7 @@ import (
 	"github.com/runatlantis/atlantis/server/core/drift"
 	"github.com/runatlantis/atlantis/server/core/redis"
 	"github.com/runatlantis/atlantis/server/core/terraform/tfclient"
+	"github.com/runatlantis/atlantis/server/fork/driftredis"
 	"github.com/runatlantis/atlantis/server/jobs"
 	"github.com/runatlantis/atlantis/server/metrics"
 	"github.com/runatlantis/atlantis/server/scheduled"
@@ -1107,7 +1108,22 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 
 	if userConfig.EnableDriftDetection {
 		logger.Info("Drift detection is enabled")
-		driftStorage := drift.NewInMemoryStorage()
+		driftStorage, err := driftredis.Build(userConfig.ForkDriftStorage, driftredis.Config{ // fork: drift storage backend
+			Hostname:           userConfig.RedisHost,
+			Port:               userConfig.RedisPort,
+			Username:           userConfig.RedisUsername,
+			Password:           userConfig.RedisPassword,
+			DB:                 userConfig.RedisDB,
+			TLSEnabled:         userConfig.RedisTLSEnabled,
+			InsecureSkipVerify: userConfig.RedisInsecureSkipVerify,
+			ClusterAddresses:   driftredis.SplitAddresses(userConfig.RedisClusterAddresses),
+		}, driftredis.Options{
+			KeyPrefix: userConfig.ForkDriftRedisKeyPrefix,
+			Retention: time.Duration(userConfig.ForkDriftRetentionHours) * time.Hour,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initializing drift storage: %w", err)
+		}
 		apiController.DriftStorage = driftStorage
 		apiController.RemediationService = drift.NewInMemoryRemediationService(driftStorage)
 

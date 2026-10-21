@@ -2716,6 +2716,24 @@ func TestAPIController_DriftStatus(t *testing.T) {
 	Equals(t, checkTime, result.CheckedAt)
 }
 
+func TestAPIController_DriftStatus_StorageUnavailable(t *testing.T) {
+	ac, _, _ := setup(t)
+	driftStorage := driftmocks.NewMockStorage()
+	When(driftStorage.Get(Any[string](), Any[drift.GetOptions]())).
+		ThenReturn(nil, fmt.Errorf("reading: %w", drift.ErrStorageUnavailable))
+	ac.DriftStorage = driftStorage
+
+	req, _ := http.NewRequest("GET", "?repository=owner/repo&type=Github", nil)
+	req.Header.Set(atlantisTokenHeader, atlantisToken)
+	w := httptest.NewRecorder()
+	ac.DriftStatus(w, req)
+
+	Equals(t, http.StatusServiceUnavailable, w.Code)
+	response, _ := io.ReadAll(w.Result().Body)
+	apiErr := parseAPIError(t, response)
+	Equals(t, controllers.ErrCodeServiceUnavailable, apiErr.Code)
+}
+
 func TestAPIController_DriftStatus_Unauthorized(t *testing.T) {
 	RegisterMockTestingT(t)
 	gmockCtrl := gomock.NewController(t)
@@ -3430,6 +3448,32 @@ func TestAPIController_Remediate_AutoApplyRequiresOptIn(t *testing.T) {
 	Equals(t, http.StatusServiceUnavailable, w.Code)
 	apiErr := parseAPIError(t, w.Body.Bytes())
 	Equals(t, controllers.ErrCodeServiceUnavailable, apiErr.Code)
+	remediationService.VerifyWasCalled(Never()).Remediate(Any[models.RemediationRequest](), Any[drift.RemediationExecutor]())
+}
+
+type unhealthyDriftStorage struct{ *drift.InMemoryStorage }
+
+func (unhealthyDriftStorage) Healthy() error { return drift.ErrStorageUnavailable }
+
+func TestAPIController_Remediate_ApplyRejectedWhenStorageUnavailable(t *testing.T) {
+	ac, _, _ := setup(t)
+	ac.EnableDriftRemediation = true
+	ac.DriftStorage = unhealthyDriftStorage{drift.NewInMemoryStorage()}
+	remediationService := driftmocks.NewMockRemediationService()
+	ac.RemediationService = remediationService
+
+	body, _ := json.Marshal(models.RemediationRequest{
+		Repository: "owner/repo",
+		Ref:        "main",
+		Type:       "Github",
+		Action:     models.RemediationAutoApply,
+	})
+	req, _ := http.NewRequest("POST", "", bytes.NewBuffer(body))
+	req.Header.Set(atlantisTokenHeader, atlantisToken)
+	w := httptest.NewRecorder()
+	ac.Remediate(w, req)
+
+	Equals(t, http.StatusServiceUnavailable, w.Code)
 	remediationService.VerifyWasCalled(Never()).Remediate(Any[models.RemediationRequest](), Any[drift.RemediationExecutor]())
 }
 

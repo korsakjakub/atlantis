@@ -502,6 +502,10 @@ func (a *APIController) DriftStatus(w http.ResponseWriter, r *http.Request) {
 	// Retrieve drift results from storage
 	drifts, err := a.DriftStorage.Get(baseRepo.ID(), opts)
 	if err != nil {
+		if errors.Is(err, drift.ErrStorageUnavailable) {
+			responder.ServiceUnavailable(w, r, "drift storage is unavailable")
+			return
+		}
 		responder.InternalError(w, r, err)
 		return
 	}
@@ -1238,6 +1242,15 @@ func (a *APIController) Remediate(w http.ResponseWriter, r *http.Request) {
 	if request.Action == models.RemediationAutoApply && !a.EnableDriftRemediation {
 		responder.ServiceUnavailable(w, r, "drift remediation apply is not enabled")
 		return
+	}
+	// Fail closed: never apply while the drift backend cannot confirm cached drift.
+	if request.Action == models.RemediationAutoApply {
+		if hc, ok := a.DriftStorage.(drift.HealthChecker); ok {
+			if err := hc.Healthy(); err != nil {
+				responder.ServiceUnavailable(w, r, "drift storage is unavailable")
+				return
+			}
+		}
 	}
 
 	// Check if the repo is allowlisted
