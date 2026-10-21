@@ -12,7 +12,7 @@ import (
 // SplitAddresses parses a comma separated address list, dropping blanks.
 func SplitAddresses(s string) []string {
 	var out []string
-	for _, a := range strings.Split(s, ",") {
+	for a := range strings.SplitSeq(s, ",") {
 		if a = strings.TrimSpace(a); a != "" {
 			out = append(out, a)
 		}
