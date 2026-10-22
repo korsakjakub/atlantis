@@ -39,6 +39,7 @@ import (
 	"github.com/runatlantis/atlantis/server/core/config/valid"
 	"github.com/runatlantis/atlantis/server/core/db"
 	"github.com/runatlantis/atlantis/server/core/drift"
+	"github.com/runatlantis/atlantis/server/core/queue"
 	"github.com/runatlantis/atlantis/server/core/redis"
 	"github.com/runatlantis/atlantis/server/core/terraform/tfclient"
 	"github.com/runatlantis/atlantis/server/fork/driftredis"
@@ -128,6 +129,7 @@ type Server struct {
 	WebPassword                    string
 	ProjectCmdOutputHandler        jobs.ProjectCommandOutputHandler
 	ScheduledExecutorService       *scheduled.ExecutorService
+	QueueExecutor                  *queue.Executor // fork: nil unless --fork-queue-backend=redis-streams
 	DisableGlobalApplyLock         bool
 	EnableProfilingAPI             bool
 	database                       db.Database
@@ -1108,6 +1110,24 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		ParallelPoolSize:                userConfig.ParallelPoolSize,
 	}
 
+	var queueExecutor *queue.Executor // fork: queue backend (US-040)
+	if userConfig.ForkQueueBackend == queue.BackendRedisStreams {
+		backend, err := queue.Build(userConfig.ForkQueueBackend, userConfig.ForkQueueRedisURL, userConfig.ForkQueueRedisKeyPrefix, queue.Options{
+			MaxAttempts: userConfig.ForkQueueMaxAttempts,
+			ClaimIdle:   time.Duration(userConfig.ForkQueueClaimIdleSeconds) * time.Second,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initializing queue backend: %w", err)
+		}
+		host, _ := os.Hostname()
+		queueExecutor = &queue.Executor{
+			Backend: backend, Handler: commandRunner.HandleQueuedJob, Log: logger,
+			Workers: max(userConfig.ParallelPoolSize, 1), Name: fmt.Sprintf("%s-%d", host, os.Getpid()),
+		}
+		commandRunner.Queue = queueExecutor
+		logger.Info("command queue backend is %q", userConfig.ForkQueueBackend)
+	}
+
 	if userConfig.EnableDriftDetection {
 		logger.Info("Drift detection is enabled")
 		driftStorage, err := driftredis.Build(userConfig.ForkDriftStorage, driftredis.Config{ // fork: drift storage backend
@@ -1201,6 +1221,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		WebUsername:                    userConfig.WebUsername,
 		WebPassword:                    userConfig.WebPassword,
 		ScheduledExecutorService:       scheduledExecutorService,
+		QueueExecutor:                  queueExecutor,
 		EnableProfilingAPI:             userConfig.EnableProfilingAPI,
 		database:                       database,
 	}
@@ -1294,6 +1315,12 @@ func (s *Server) Start() error {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go s.ScheduledExecutorService.Run()
+
+	if s.QueueExecutor != nil {
+		qctx, qcancel := context.WithCancel(context.Background())
+		defer qcancel()
+		go s.QueueExecutor.Run(qctx)
+	}
 
 	go func() {
 		s.ProjectCmdOutputHandler.Handle()

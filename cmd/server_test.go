@@ -178,6 +178,11 @@ var testFlags = map[string]any{
 	ForkDriftStorageFlag:             "memory",
 	ForkDriftRedisKeyPrefixFlag:      "atlantis:fork:drift:",
 	ForkDriftRetentionHoursFlag:      720,
+	ForkQueueBackendFlag:             "in-process",
+	ForkQueueRedisURLFlag:            "",
+	ForkQueueRedisKeyPrefixFlag:      "atlantis:fork:queue:",
+	ForkQueueMaxAttemptsFlag:         3,
+	ForkQueueClaimIdleSecondsFlag:    300,
 }
 
 func TestExecute_Defaults(t *testing.T) {
@@ -622,6 +627,41 @@ func TestExecute_ValidateCheckoutStrategy(t *testing.T) {
 	}, t)
 	err := c.Execute()
 	ErrEquals(t, "invalid checkout strategy: not one of branch or merge", err)
+}
+
+func TestExecute_ValidateForkQueueBackend(t *testing.T) {
+	cases := map[string]struct {
+		flags map[string]any
+		err   string
+	}{
+		"redis-streams without url must not fall back": {
+			map[string]any{ForkQueueBackendFlag: "redis-streams"},
+			"--fork-queue-backend: queue backend \"redis-streams\" requires a redis url",
+		},
+		"unknown backend": {
+			map[string]any{ForkQueueBackendFlag: "nats"},
+			"--fork-queue-backend: queue backend must be one of in-process or redis-streams, got \"nats\"",
+		},
+		"max attempts": {
+			map[string]any{ForkQueueMaxAttemptsFlag: -1},
+			"--fork-queue-max-attempts must be at least 1",
+		},
+		"redis-streams with url": {
+			map[string]any{ForkQueueBackendFlag: "redis-streams", ForkQueueRedisURLFlag: "redis://localhost:6379/0"},
+			"",
+		},
+		"in-process": {map[string]any{ForkQueueBackendFlag: "in-process"}, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := setupWithDefaults(tc.flags, t).Execute()
+			if tc.err == "" {
+				Ok(t, err)
+				return
+			}
+			ErrEquals(t, tc.err, err)
+		})
+	}
 }
 
 func TestExecute_ValidateAutomergeMethod(t *testing.T) {

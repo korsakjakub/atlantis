@@ -150,6 +150,13 @@ type UserConfig struct {
 	WebsocketCheckOrigin       bool            `mapstructure:"websocket-check-origin"`
 	UseTFPluginCache           bool            `mapstructure:"use-tf-plugin-cache"`
 
+	// fork: queue backend (US-040).
+	ForkQueueBackend          string `mapstructure:"fork-queue-backend"`
+	ForkQueueRedisURL         string `mapstructure:"fork-queue-redis-url"`
+	ForkQueueRedisKeyPrefix   string `mapstructure:"fork-queue-redis-key-prefix"`
+	ForkQueueMaxAttempts      int    `mapstructure:"fork-queue-max-attempts"`
+	ForkQueueClaimIdleSeconds int    `mapstructure:"fork-queue-claim-idle-seconds"`
+
 	// fork: drift storage backend.
 	ForkDriftStorage        string `mapstructure:"fork-drift-storage"`
 	ForkDriftRedisKeyPrefix string `mapstructure:"fork-drift-redis-key-prefix"`
