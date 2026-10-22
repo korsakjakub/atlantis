@@ -799,7 +799,7 @@ ATLANTIS_FORK_SA_TOKENS=/etc/atlantis/sa-tokens.yaml
 Fork-only. Path to a YAML file defining scoped service-account tokens for `/api/*`
 (`id`, `secret_sha256`, `actions` of `read`/`plan`/`apply`, `repos` globs). Sent in `X-Atlantis-Token`;
 out-of-scope requests get `403`. The global `--api-secret` keeps full access. Requires `--api-secret`.
-Empty (default) disables it. See `docs/adr/0006-fork-scoped-service-tokens.md`.
+Empty (default) disables it. See `docs/adr/0008-fork-service-account-tokens.md`.
 
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 

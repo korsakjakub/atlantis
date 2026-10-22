@@ -1,5 +1,5 @@
 // Package sactoken implements scoped service-account tokens for /api/*.
-// Fork-only feature, see docs/adr/0006-fork-scoped-service-tokens.md.
+// Fork-only feature, see docs/adr/0008-fork-service-account-tokens.md.
 package sactoken
 
 import (
@@ -37,8 +37,10 @@ type Token struct {
 	SecretSHA256 string `yaml:"secret_sha256"`
 	// Actions: read, plan and/or apply. They do not imply each other.
 	Actions []string `yaml:"actions"`
-	// Repos are case-insensitive globs ("*" wildcard) on the repository full
-	// name, e.g. "myorg/*". A request without a repository (/api/locks) needs "*".
+	// Repos are case-insensitive globs on the repository full name: "*" matches
+	// within one path segment ("myorg/*"), "**" spans segments ("group/**"),
+	// and a lone "*" matches everything. The owner segment may not contain a
+	// wildcard. A request without a repository (/api/locks) needs a lone "*".
 	Repos []string `yaml:"repos"`
 
 	hash  []byte
@@ -66,13 +68,17 @@ func Load(path string, apiSecret []byte, logger logging.SimpleLogging) (*Authori
 		return nil, fmt.Errorf("reading scoped tokens file: %w", err)
 	}
 	var cfg fileConfig
-	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("parsing scoped tokens file: %w", err)
 	}
 	if len(cfg.Tokens) == 0 {
 		return nil, fmt.Errorf("scoped tokens file defines no tokens")
 	}
 	seen := map[string]bool{}
+	hashes := map[string]bool{}
+	globalHash := sha256.Sum256(apiSecret)
 	for _, t := range cfg.Tokens {
 		if t == nil || t.ID == "" || seen[t.ID] {
 			return nil, fmt.Errorf("token ids must be present and unique")
@@ -81,6 +87,13 @@ func Load(path string, apiSecret []byte, logger logging.SimpleLogging) (*Authori
 		if t.hash, err = hex.DecodeString(t.SecretSHA256); err != nil || len(t.hash) != sha256.Size {
 			return nil, fmt.Errorf("token %q: secret_sha256 must be a hex SHA-256", t.ID)
 		}
+		if subtle.ConstantTimeCompare(t.hash, globalHash[:]) == 1 {
+			return nil, fmt.Errorf("token %q: secret must differ from --api-secret", t.ID)
+		}
+		if hashes[string(t.hash)] {
+			return nil, fmt.Errorf("token %q: duplicate secret_sha256", t.ID)
+		}
+		hashes[string(t.hash)] = true
 		if len(t.Actions) == 0 || len(t.Repos) == 0 {
 			return nil, fmt.Errorf("token %q: actions and repos are required", t.ID)
 		}
@@ -90,10 +103,7 @@ func Load(path string, apiSecret []byte, logger logging.SimpleLogging) (*Authori
 			}
 		}
 		for _, p := range t.Repos {
-			if p == "" || strings.Contains(p, "://") {
-				return nil, fmt.Errorf("token %q: invalid repo pattern %q", t.ID, p)
-			}
-			re, err := regexp.Compile("(?i)^" + strings.ReplaceAll(regexp.QuoteMeta(p), `\*`, ".*") + "$")
+			re, err := compileRepoPattern(p)
 			if err != nil {
 				return nil, fmt.Errorf("token %q: invalid repo pattern %q: %w", t.ID, p, err)
 			}
@@ -101,6 +111,25 @@ func Load(path string, apiSecret []byte, logger logging.SimpleLogging) (*Authori
 		}
 	}
 	return &Authorizer{tokens: cfg.Tokens, apiSecret: apiSecret, logger: logger}, nil
+}
+
+func compileRepoPattern(p string) (*regexp.Regexp, error) {
+	if p == "*" {
+		return regexp.MustCompile("(?s).*"), nil
+	}
+	owner, _, ok := strings.Cut(p, "/")
+	if !ok || owner == "" || strings.Contains(owner, "*") || strings.Contains(p, "://") {
+		return nil, fmt.Errorf("must be owner/name with no wildcard in the owner, or a lone *")
+	}
+	parts := strings.Split(p, "**")
+	for i, part := range parts {
+		segs := strings.Split(part, "*")
+		for j := range segs {
+			segs[j] = regexp.QuoteMeta(segs[j])
+		}
+		parts[i] = strings.Join(segs, "[^/]*")
+	}
+	return regexp.Compile("(?is)^" + strings.Join(parts, ".*") + "$")
 }
 
 func (t *Token) allows(action, repo string) bool {
@@ -123,7 +152,7 @@ func Classify(method, path string, query func(string) string, body []byte) (acti
 	switch {
 	case method == http.MethodGet && path == "/api/locks":
 		return Read, "", true, nil
-	case method == http.MethodGet && (path == "/api/drift/status" || strings.HasPrefix(path, "/api/drift/remediate")):
+	case method == http.MethodGet && (path == "/api/drift/status" || path == "/api/drift/remediate" || isRemediateID(path)):
 		return Read, query("repository"), true, nil
 	case method == http.MethodPost && (path == "/api/plan" || path == "/api/apply" ||
 		path == "/api/drift/detect" || path == "/api/drift/remediate"):
@@ -141,6 +170,12 @@ func Classify(method, path string, query func(string) string, body []byte) (acti
 		return action, req.Repository, true, nil
 	}
 	return "", "", false, nil
+}
+
+// isRemediateID matches /api/drift/remediate/{id} with exactly one segment.
+func isRemediateID(path string) bool {
+	id, ok := strings.CutPrefix(path, "/api/drift/remediate/")
+	return ok && id != "" && !strings.Contains(id, "/")
 }
 
 // ServeHTTP implements negroni.Handler. Requests whose X-Atlantis-Token is not
@@ -162,7 +197,7 @@ func (a *Authorizer) ServeHTTP(rw http.ResponseWriter, r *http.Request, next htt
 	if r.Method == http.MethodPost {
 		var err error
 		if body, err = io.ReadAll(io.LimitReader(r.Body, maxBody+1)); err != nil || len(body) > maxBody {
-			a.deny(rw, tok, "", "", "invalid_request", "request body unreadable or too large", http.StatusBadRequest)
+			a.deny(rw, r, tok, "", "", "invalid_request", "request body unreadable or too large", http.StatusBadRequest)
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -170,21 +205,21 @@ func (a *Authorizer) ServeHTTP(rw http.ResponseWriter, r *http.Request, next htt
 	action, repo, ok, err := Classify(r.Method, r.URL.Path, r.URL.Query().Get, body)
 	switch {
 	case !ok:
-		a.deny(rw, tok, "", "", "endpoint_not_allowed", "endpoint is not available to scoped tokens", http.StatusForbidden)
+		a.deny(rw, r, tok, "", "", "endpoint_not_allowed", "endpoint is not available to scoped tokens", http.StatusForbidden)
 	case err != nil:
-		a.deny(rw, tok, action, "", "invalid_request", "request body is not valid JSON", http.StatusBadRequest)
+		a.deny(rw, r, tok, action, "", "invalid_request", "request body is not valid JSON", http.StatusBadRequest)
 	case !tok.allows(action, repo):
-		a.deny(rw, tok, action, repo, "scope_denied", fmt.Sprintf("token is not scoped for %q on this repository", action), http.StatusForbidden)
+		a.deny(rw, r, tok, action, repo, "scope_denied", fmt.Sprintf("token is not scoped for %q on this repository", action), http.StatusForbidden)
 	default:
 		// Audit line carries only id, action, repo and result.
-		a.logger.Info("sa-token audit: token=%q action=%q repo=%q result=allow", tok.ID, action, repo)
+		a.logger.Info("sa-token audit: token=%q method=%q path=%q action=%q repo=%q result=allow", tok.ID, r.Method, r.URL.Path, action, repo)
 		r.Header.Set(tokenHeader, string(a.apiSecret))
 		next(rw, r)
 	}
 }
 
-func (a *Authorizer) deny(rw http.ResponseWriter, tok *Token, action, repo, code, msg string, status int) {
-	a.logger.Info("sa-token audit: token=%q action=%q repo=%q result=deny reason=%q", tok.ID, action, repo, code)
+func (a *Authorizer) deny(rw http.ResponseWriter, r *http.Request, tok *Token, action, repo, code, msg string, status int) {
+	a.logger.Info("sa-token audit: token=%q method=%q path=%q action=%q repo=%q result=deny reason=%q", tok.ID, r.Method, r.URL.Path, action, repo, code)
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(status)
 	b, _ := json.Marshal(map[string]any{"error": map[string]string{"code": code, "message": msg}})
