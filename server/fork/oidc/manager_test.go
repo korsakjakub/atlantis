@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -103,9 +104,7 @@ func (f *fakeIssuer) token(w http.ResponseWriter, r *http.Request) {
 	if c.iss != "" {
 		claims["iss"] = c.iss
 	}
-	for k, v := range c.extra {
-		claims[k] = v
-	}
+	maps.Copy(claims, c.extra)
 	raw, err := jwt.Signed(signer).Claims(claims).Serialize()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
