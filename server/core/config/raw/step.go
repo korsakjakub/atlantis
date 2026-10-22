@@ -12,6 +12,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 
 	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/runatlantis/atlantis/server/core/config/valid"
@@ -33,6 +34,9 @@ const (
 	MultiEnvStepName    = "multienv"
 	ImportStepName      = "import"
 	StateRmStepName     = "state_rm"
+	MvStepName          = "mv"
+	MvFromArgKey        = "from"
+	MvToArgKey          = "to"
 	ShellArgKey         = "shell"
 	ShellArgsArgKey     = "shellArgs"
 )
@@ -121,10 +125,34 @@ func (s Step) validStepName(stepName string) bool {
 		stepName == ShowStepName ||
 		stepName == PolicyCheckStepName ||
 		stepName == ImportStepName ||
-		stepName == StateRmStepName
+		stepName == StateRmStepName ||
+		stepName == MvStepName
+}
+
+// usesMv reports whether the step is an mv step in any of its forms.
+func (s Step) usesMv() bool {
+	if s.Key != nil && *s.Key == MvStepName {
+		return true
+	}
+	_, inMap := s.Map[MvStepName]
+	_, inCommandMap := s.CommandMap[MvStepName]
+	return inMap || inCommandMap
+}
+
+// validTFAddress is the minimal address convention for mv: non-empty, no
+// leading dash (would be parsed as a terraform flag) and no control chars.
+// Spaces are allowed because index keys may contain them: a["x y"].
+func validTFAddress(addr string) bool {
+	if addr == "" || strings.HasPrefix(addr, "-") {
+		return false
+	}
+	return !strings.ContainsFunc(addr, unicode.IsControl)
 }
 
 func (s Step) Validate() error {
+	if s.usesMv() && !valid.ForkStateMvEnabled {
+		return fmt.Errorf("the %q step requires the fork feature flag --fork-state-mv (ATLANTIS_FORK_STATE_MV=true)", MvStepName)
+	}
 	validStep := func(value any) error {
 		str := *value.(*string)
 		if !s.validStepName(str) {
@@ -149,6 +177,9 @@ func (s Step) Validate() error {
 		for stepName, args := range elem {
 			if !s.validStepName(stepName) {
 				return fmt.Errorf("%q is not a valid step type", stepName)
+			}
+			if stepName == MvStepName {
+				return fmt.Errorf("%q step takes %q and %q, not %s", MvStepName, MvFromArgKey, MvToArgKey, ExtraArgsKey)
 			}
 			var argKeys []string
 			for k := range args {
@@ -230,6 +261,14 @@ func (s Step) Validate() error {
 
 		// Validate keys per step type.
 		switch stepName {
+		case MvStepName:
+			for _, k := range []string{MvFromArgKey, MvToArgKey} {
+				v, ok := argMap[k].(string)
+				if !ok || !validTFAddress(v) {
+					return fmt.Errorf("%q step must have a %q key set to a terraform address (not empty, not starting with '-')", stepName, k)
+				}
+				delete(argMap, k)
+			}
 		case EnvStepName:
 			foundNameKey := false
 			for _, k := range argKeys {
@@ -354,6 +393,10 @@ func (s Step) Validate() error {
 			}
 			// Sort so tests can be deterministic.
 			sort.Strings(argKeys)
+			if stepName == MvStepName {
+				return fmt.Errorf("%q step only supports keys %q and %q, found extra keys %q",
+					stepName, MvFromArgKey, MvToArgKey, strings.Join(argKeys, ","))
+			}
 			return fmt.Errorf("%q steps only support keys %q, %q, %q and %q, found extra keys %q",
 				stepName, CommandArgKey, OutputArgKey, ShellArgKey, ShellArgsArgKey, strings.Join(argKeys, ","))
 		}
@@ -461,6 +504,13 @@ func (s Step) ToValid() valid.Step {
 						}
 					}
 				}
+			}
+
+			if from, ok := stepArgs[MvFromArgKey].(string); ok {
+				step.MvFrom = from
+			}
+			if to, ok := stepArgs[MvToArgKey].(string); ok {
+				step.MvTo = to
 			}
 
 			if step.StepName == RunStepName && len(step.Output) == 0 {

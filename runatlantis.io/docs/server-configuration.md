@@ -788,6 +788,24 @@ ATLANTIS_FORK_OIDC_CONFIG=/etc/atlantis/oidc.yaml
 
 Fork-only. Path to the YAML file defining the OIDC presets (issuer, client ID, scopes, claim map). See `fork/docs/oidc.md`.
 
+### `--fork-state-mv`
+
+```bash
+atlantis server --fork-state-mv
+# or
+ATLANTIS_FORK_STATE_MV=true
+```
+
+Fork-only. Enable the `mv: {from, to}` workflow step and the `atlantis state mv FROM TO` comment command, which run
+`terraform state mv` through the pipeline. With the flag off (default), a config that uses an `mv` step fails validation
+and the comment command is refused. See `docs/adr/0009-fork-state-mv-step.md`.
+
+The comment command also needs `state` in `--allow-commands`. Consider
+`--blocked-extra-args=-chdir,-plugin-dir,-state,-state-out,-backup,-backup-out`, because `state mv` accepts Terraform
+flags after `--`. Enabling the flag adds a default `state_mv` stage (`[init, mv]`) to every workflow, including those
+where `state_rm` was emptied; override it with `state_mv: {steps: []}`. A configured `mv` step in the `plan` stage
+changes state before the PR is approved; see [Custom Workflows](custom-workflows.md).
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash

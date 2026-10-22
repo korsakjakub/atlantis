@@ -394,6 +394,10 @@ func (e *CommentParser) parseArgs(name command.Name, args []string, flagSet *pfl
 			errMsg := fmt.Sprintf("invalid subcommand %s (not %s)", subCommand, strings.Join(availableSubCommands, ", "))
 			return "", nil, e.errMarkdown(errMsg, name.String(), flagSet)
 		}
+		// Refuse here, before pre-workflow hooks and clone run. StateCommandRunner checks again.
+		if name == command.State && subCommand == "mv" && !valid.ForkStateMvEnabled {
+			return "", nil, e.errMarkdown("state mv is disabled, start the server with --fork-state-mv to enable it", name.String(), flagSet)
+		}
 	}
 
 	// check command args count requirements

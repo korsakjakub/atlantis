@@ -102,7 +102,7 @@ func (c Name) DefaultUsage() string {
 func (c Name) SubCommands() []string {
 	switch c {
 	case State:
-		return []string{"rm"}
+		return []string{"rm", "mv"}
 	default:
 		return nil
 	}
@@ -116,6 +116,9 @@ func (c Name) CommandArgCount(subCommand string) (*ArgCount, error) {
 	case State:
 		if subCommand == "rm" {
 			return &ArgCount{1, -1}, nil // "atlantis state rm ADDRESS..."
+		}
+		if subCommand == "mv" {
+			return &ArgCount{2, 2}, nil // "atlantis state mv FROM TO"
 		}
 		return nil, fmt.Errorf("command arg count unknown sub command: %s", subCommand)
 	default:

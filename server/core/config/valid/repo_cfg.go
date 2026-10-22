@@ -254,6 +254,10 @@ type Step struct {
 	EnvVarValue string
 	// The Shell to use for RunCommand execution.
 	RunShell *CommandShell
+	// MvFrom and MvTo are the source and destination addresses of an mv step
+	// (US-100). Empty when the addresses come from the comment command.
+	MvFrom string
+	MvTo   string
 	// FilterRegex is a list of regexes for post-processing a RunCommand output
 	// these will be executed in the received order
 	FilterRegexes []*regexp.Regexp
@@ -266,4 +270,5 @@ type Workflow struct {
 	PolicyCheck Stage
 	Import      Stage
 	StateRm     Stage
+	StateMv     Stage
 }

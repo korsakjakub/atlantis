@@ -172,6 +172,9 @@ const (
 	ForkDriftRedisKeyPrefixFlag = "fork-drift-redis-key-prefix"
 	ForkDriftRetentionHoursFlag = "fork-drift-retention-hours"
 
+	// fork: state mv as a pipeline step (US-100, docs/adr).
+	ForkStateMvFlag = "fork-state-mv"
+
 	// NOTE: Must manually set these as defaults in the setDefaults function.
 	DefaultADBasicUser                  = ""
 	DefaultADBasicPassword              = ""
@@ -550,6 +553,11 @@ var stringFlags = map[string]stringFlag{
 }
 
 var boolFlags = map[string]boolFlag{
+	// fork: state mv as a pipeline step.
+	ForkStateMvFlag: {
+		description:  "Enable the 'mv' workflow step and the 'atlantis state mv' comment command. Fork-only feature.",
+		defaultValue: false,
+	},
 	AllowForkPRsFlag: {
 		description:  "Allow Atlantis to run on pull requests from forks. A security issue for public repos.",
 		defaultValue: false,

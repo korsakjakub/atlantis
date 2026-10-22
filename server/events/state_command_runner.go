@@ -6,6 +6,7 @@ package events
 import (
 	"fmt"
 
+	"github.com/runatlantis/atlantis/server/core/config/valid"
 	"github.com/runatlantis/atlantis/server/events/command"
 )
 
@@ -34,6 +35,14 @@ func (v *StateCommandRunner) Run(ctx *command.Context, cmd *CommentCommand) {
 	var result command.Result
 	switch cmd.SubName {
 	case "rm":
+		result = v.runRm(ctx, cmd)
+	case "mv":
+		if !valid.ForkStateMvEnabled {
+			result = command.Result{Failure: "state mv is disabled, start the server with --fork-state-mv to enable it"}
+			break
+		}
+		// The project runner is shared with rm: the steps were already picked
+		// by subcommand when the project context was built.
 		result = v.runRm(ctx, cmd)
 	default:
 		result = command.Result{

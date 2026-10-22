@@ -58,6 +58,7 @@ func TestNewGlobalCfg(t *testing.T) {
 				},
 			},
 		},
+		StateMv: valid.DefaultStateMvStage,
 		StateRm: valid.Stage{
 			Steps: []valid.Step{
 				{
@@ -554,6 +555,7 @@ policies:
 					PolicyCheck: valid.DefaultPolicyCheckStage,
 					Import:      valid.DefaultImportStage,
 					StateRm:     valid.DefaultStateRmStage,
+					StateMv:     valid.DefaultStateMvStage,
 				},
 				PolicySets: valid.PolicySets{
 					Version:         nil,
@@ -605,6 +607,7 @@ policies:
 					PolicyCheck: valid.DefaultPolicyCheckStage,
 					Import:      valid.DefaultImportStage,
 					StateRm:     valid.DefaultStateRmStage,
+					StateMv:     valid.DefaultStateMvStage,
 				},
 				PolicySets: valid.PolicySets{
 					Version:         version,
@@ -666,6 +669,7 @@ func TestGlobalCfg_MergeProjectCfg(t *testing.T) {
 		Plan:        valid.DefaultPlanStage,
 		Import:      valid.DefaultImportStage,
 		StateRm:     valid.DefaultStateRmStage,
+		StateMv:     valid.DefaultStateMvStage,
 	}
 	cases := map[string]struct {
 		gCfg          string
@@ -707,6 +711,7 @@ workflows:
 					},
 					Import:  valid.DefaultImportStage,
 					StateRm: valid.DefaultStateRmStage,
+					StateMv: valid.DefaultStateMvStage,
 				},
 				RepoRelDir:        ".",
 				Workspace:         "default",
@@ -1251,6 +1256,7 @@ func TestGlobalCfg_PolicyCheckOverride(t *testing.T) {
 		Plan:        valid.DefaultPlanStage,
 		Import:      valid.DefaultImportStage,
 		StateRm:     valid.DefaultStateRmStage,
+		StateMv:     valid.DefaultStateMvStage,
 	}
 	cases := map[string]struct {
 		gPolicyCheck  bool
