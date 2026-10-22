@@ -311,7 +311,7 @@ func (m *Manager) identity(idt *gooidc.IDToken, claims map[string]any) Identity 
 }
 
 func (m *Manager) cookie(name, value, path string, expires time.Time) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // G124: Secure is on unless session.insecure_cookie (dev only)
 		Name:     name,
 		Value:    value,
 		Path:     path,
