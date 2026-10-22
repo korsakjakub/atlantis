@@ -788,6 +788,18 @@ ATLANTIS_FORK_OIDC_CONFIG=/etc/atlantis/oidc.yaml
 
 Fork-only. Path to the YAML file defining the OIDC presets (issuer, client ID, scopes, claim map). See `fork/docs/oidc.md`.
 
+### `--fork-state-mv`
+
+```bash
+atlantis server --fork-state-mv
+# or
+ATLANTIS_FORK_STATE_MV=true
+```
+
+Fork-only. Enable the `mv: {from, to}` workflow step and the `atlantis state mv FROM TO` comment command, which run
+`terraform state mv` through the pipeline. With the flag off (default), a config that uses an `mv` step fails validation
+and the comment command is refused. See `docs/adr/0009-fork-state-mv-step.md`.
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash

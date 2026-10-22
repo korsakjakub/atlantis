@@ -207,6 +207,8 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	}
 	disableApply := !slices.Contains(allowCommands, command.Apply)
 
+	valid.ForkStateMvEnabled = userConfig.ForkStateMv // fork: must be set before any config is parsed
+
 	parserValidator := &cfg.ParserValidator{}
 
 	globalCfg := valid.NewGlobalCfgFromArgs(
@@ -840,6 +842,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		},
 		ImportStepRunner:          runtime.NewImportStepRunner(terraformClient, defaultTfDistribution, defaultTfVersion, planStore),
 		StateRmStepRunner:         runtime.NewStateRmStepRunner(terraformClient, defaultTfDistribution, defaultTfVersion, planStore),
+		StateMvStepRunner:         runtime.NewStateMvStepRunner(terraformClient, defaultTfDistribution, defaultTfVersion, planStore),
 		WorkingDir:                workingDir,
 		Webhooks:                  webhooksManager,
 		WorkingDirLocker:          workingDirLocker,

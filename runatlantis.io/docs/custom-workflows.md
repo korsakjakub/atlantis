@@ -581,6 +581,24 @@ state_rm:
 | apply    | [Stage](#stage) | `steps: [apply]`          | no       | How to apply for this project.        |
 | import   | [Stage](#stage) | `steps: [init, import]`   | no       | How to import for this project.       |
 | state_rm | [Stage](#stage) | `steps: [init, state_rm]` | no       | How to run state rm for this project. |
+| state_mv | [Stage](#stage) | `steps: [init, mv]`       | no       | How to run state mv for this project. |
+
+#### `mv` step (fork-only)
+
+Requires `--fork-state-mv`. Runs `terraform state mv FROM TO` as a pipeline step. Put it before `plan` so the plan
+proves the rename left no diff. The step mutates state on every run, so remove it after the rename has been applied.
+
+```yaml
+plan:
+  steps:
+  - init
+  - mv:
+      from: aws_s3_bucket.old
+      to: aws_s3_bucket.new
+  - plan
+```
+
+`from` and `to` are required. The bare `mv` in the `state_mv` stage takes the addresses from `atlantis state mv FROM TO`.
 
 ### Stage
 

@@ -119,6 +119,8 @@ func (cb *DefaultProjectCommandContextBuilder) BuildProjectContext(
 		switch subName {
 		case "rm":
 			steps = prjCfg.Workflow.StateRm.Steps
+		case "mv":
+			steps = prjCfg.Workflow.StateMv.Steps
 		default:
 			// comment_parser prevent invalid subcommand, so not need to handle this.
 			// if comes here, state_command_runner will respond on PR, so it's enough to do log only.

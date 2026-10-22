@@ -14,6 +14,7 @@ type Workflow struct {
 	PolicyCheck *Stage `yaml:"policy_check,omitempty" json:"policy_check,omitempty"`
 	Import      *Stage `yaml:"import,omitempty" json:"import,omitempty"`
 	StateRm     *Stage `yaml:"state_rm,omitempty" json:"state_rm,omitempty"`
+	StateMv     *Stage `yaml:"state_mv,omitempty" json:"state_mv,omitempty"`
 }
 
 func (w Workflow) Validate() error {
@@ -23,6 +24,7 @@ func (w Workflow) Validate() error {
 		validation.Field(&w.PolicyCheck),
 		validation.Field(&w.Import),
 		validation.Field(&w.StateRm),
+		validation.Field(&w.StateMv),
 	)
 }
 
@@ -44,6 +46,7 @@ func (w Workflow) ToValid(name string) valid.Workflow {
 	v.PolicyCheck = w.toValidStage(w.PolicyCheck, valid.DefaultPolicyCheckStage)
 	v.Import = w.toValidStage(w.Import, valid.DefaultImportStage)
 	v.StateRm = w.toValidStage(w.StateRm, valid.DefaultStateRmStage)
+	v.StateMv = w.toValidStage(w.StateMv, valid.DefaultStateMvStage)
 
 	return v
 }

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/runatlantis/atlantis/server/core/config/valid"
@@ -337,6 +338,7 @@ type DefaultProjectCommandRunner struct {
 	VersionStepRunner         StepRunner
 	ImportStepRunner          StepRunner
 	StateRmStepRunner         StepRunner
+	StateMvStepRunner         StepRunner
 	RunStepRunner             CustomStepRunner
 	EnvStepRunner             EnvStepRunner
 	MultiEnvStepRunner        MultiEnvStepRunner
@@ -1186,6 +1188,13 @@ func (p *DefaultProjectCommandRunner) runSteps(steps []valid.Step, ctx command.P
 			out, err = p.ImportStepRunner.Run(ctx, step.ExtraArgs, absPath, envs)
 		case "state_rm":
 			out, err = p.StateRmStepRunner.Run(ctx, step.ExtraArgs, absPath, envs)
+		case "mv":
+			// A configured mv step carries its addresses; otherwise they come from the comment.
+			args := step.ExtraArgs
+			if step.MvFrom != "" {
+				args = append(slices.Clone(args), step.MvFrom, step.MvTo)
+			}
+			out, err = p.StateMvStepRunner.Run(ctx, args, absPath, envs)
 		case "run":
 			out, err = p.RunStepRunner.Run(ctx, step.RunShell, step.RunCommand, absPath, envs, !ctx.SuppressJobOutput, step.Output, step.FilterRegexes)
 		case "env":

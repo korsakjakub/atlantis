@@ -210,6 +210,24 @@ var DefaultStateRmStage = Stage{
 	},
 }
 
+// ForkStateMvEnabled gates the mv step and the state mv command (US-100).
+// shortcut: package-level because config validation has no access to server
+// flags; set once in NewServer before any config is parsed.
+var ForkStateMvEnabled bool
+
+// DefaultStateMvStage is the Atlantis default state_mv stage. The mv step has
+// no from/to here, so it takes the addresses from `atlantis state mv FROM TO`.
+var DefaultStateMvStage = Stage{
+	Steps: []Step{
+		{
+			StepName: "init",
+		},
+		{
+			StepName: "mv",
+		},
+	},
+}
+
 type GlobalCfgArgs struct {
 	RepoConfigFile string
 	// No longer a user option as of https://github.com/runatlantis/atlantis/pull/3911,
@@ -229,6 +247,7 @@ func NewGlobalCfgFromArgs(args GlobalCfgArgs) GlobalCfg {
 		PolicyCheck: DefaultPolicyCheckStage,
 		Import:      DefaultImportStage,
 		StateRm:     DefaultStateRmStage,
+		StateMv:     DefaultStateMvStage,
 	}
 	// Must construct slices here instead of using a `var` declaration because
 	// we treat nil slices differently.

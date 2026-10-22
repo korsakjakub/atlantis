@@ -389,7 +389,7 @@ func (m *MarkdownRenderer) renderProjectResults(ctx *command.Context, results []
 		tmpl = templates.Lookup("singleProjectImport")
 	case len(resultsTmplData) == 1 && common.CommandName == stateCommandTitle:
 		switch common.SubCommand {
-		case "rm":
+		case "rm", "mv":
 			tmpl = templates.Lookup("singleProjectStateRm")
 		default:
 			return fmt.Sprintf("no template matched–this is a bug: command=%s, command_name=%s, subcommand=%s", common.Command, common.CommandName, common.SubCommand)
@@ -416,7 +416,7 @@ func (m *MarkdownRenderer) renderProjectResults(ctx *command.Context, results []
 		tmpl = templates.Lookup("multiProjectImport")
 	case common.CommandName == stateCommandTitle:
 		switch common.SubCommand {
-		case "rm":
+		case "rm", "mv":
 			tmpl = templates.Lookup("multiProjectStateRm")
 		default:
 			return fmt.Sprintf("no template matched–this is a bug: command=%s, command_name=%s, subcommand=%s", common.Command, common.CommandName, common.SubCommand)

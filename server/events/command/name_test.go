@@ -89,7 +89,7 @@ func TestName_SubCommands(t *testing.T) {
 		{c: command.ApprovePolicies},
 		{c: command.Version},
 		{c: command.Import},
-		{c: command.State, want: []string{"rm"}},
+		{c: command.State, want: []string{"rm", "mv"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.c.String(), func(t *testing.T) {

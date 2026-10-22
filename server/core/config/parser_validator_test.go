@@ -181,6 +181,7 @@ workflows:
 						},
 						Import:  valid.DefaultImportStage,
 						StateRm: valid.DefaultStateRmStage,
+						StateMv: valid.DefaultStateMvStage,
 					},
 				},
 			},
@@ -867,6 +868,7 @@ workflows:
 								},
 							},
 						},
+						StateMv: valid.DefaultStateMvStage,
 						StateRm: valid.Stage{
 							Steps: []valid.Step{
 								{
@@ -969,6 +971,7 @@ workflows:
 								},
 							},
 						},
+						StateMv: valid.DefaultStateMvStage,
 						StateRm: valid.Stage{
 							Steps: []valid.Step{
 								{
@@ -1052,6 +1055,7 @@ workflows:
 								},
 							},
 						},
+						StateMv: valid.DefaultStateMvStage,
 						StateRm: valid.Stage{
 							Steps: []valid.Step{
 								{
@@ -1149,6 +1153,7 @@ workflows:
 								},
 							},
 						},
+						StateMv: valid.DefaultStateMvStage,
 						StateRm: valid.Stage{
 							Steps: []valid.Step{
 								{
@@ -1282,6 +1287,7 @@ func TestParseGlobalCfg(t *testing.T) {
 				},
 			},
 		},
+		StateMv: valid.DefaultStateMvStage,
 		StateRm: valid.Stage{
 			Steps: []valid.Step{
 				{
@@ -1678,6 +1684,7 @@ workflows:
 							Import: valid.Stage{
 								Steps: nil,
 							},
+							StateMv: valid.DefaultStateMvStage,
 							StateRm: valid.Stage{
 								Steps: nil,
 							},
@@ -1705,6 +1712,7 @@ workflows:
 								},
 							},
 						},
+						StateMv: valid.DefaultStateMvStage,
 					},
 				},
 				TeamAuthz: valid.TeamAuthz{
@@ -1801,6 +1809,7 @@ func TestParserValidator_ParseGlobalCfgJSON(t *testing.T) {
 				},
 			},
 		},
+		StateMv: valid.DefaultStateMvStage,
 		StateRm: valid.Stage{
 			Steps: []valid.Step{
 				{
@@ -2040,6 +2049,7 @@ func defaultWorkflow(name string) valid.Workflow {
 		PolicyCheck: valid.DefaultPolicyCheckStage,
 		Import:      valid.DefaultImportStage,
 		StateRm:     valid.DefaultStateRmStage,
+		StateMv:     valid.DefaultStateMvStage,
 	}
 }
 

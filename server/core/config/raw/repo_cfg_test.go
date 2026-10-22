@@ -402,6 +402,7 @@ func TestConfig_ToValid(t *testing.T) {
 						Apply:       valid.DefaultApplyStage,
 						Import:      valid.DefaultImportStage,
 						StateRm:     valid.DefaultStateRmStage,
+						StateMv:     valid.DefaultStateMvStage,
 					},
 				},
 			},
@@ -504,6 +505,7 @@ func TestConfig_ToValid(t *testing.T) {
 								},
 							},
 						},
+						StateMv: valid.DefaultStateMvStage,
 						StateRm: valid.Stage{
 							Steps: []valid.Step{
 								{
