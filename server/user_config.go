@@ -159,6 +159,9 @@ type UserConfig struct {
 	ForkOIDC         string `mapstructure:"fork-oidc"`
 	ForkOIDCConfig   string `mapstructure:"fork-oidc-config"`
 	ForkOIDCAPIToken bool   `mapstructure:"fork-oidc-api-token"`
+
+	// fork: scoped service-account tokens (US-032)
+	ForkSATokens string `mapstructure:"fork-sa-tokens"`
 }
 
 // ToAllowCommandNames parse AllowCommands into a slice of CommandName

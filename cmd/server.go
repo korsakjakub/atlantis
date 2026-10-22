@@ -172,6 +172,9 @@ const (
 	ForkDriftRedisKeyPrefixFlag = "fork-drift-redis-key-prefix"
 	ForkDriftRetentionHoursFlag = "fork-drift-retention-hours"
 
+	// fork: scoped service-account tokens (US-032, docs/adr).
+	ForkSATokensFlag = "fork-sa-tokens" // nolint: gosec // flag name, not a credential
+
 	// NOTE: Must manually set these as defaults in the setDefaults function.
 	DefaultADBasicUser                  = ""
 	DefaultADBasicPassword              = ""
@@ -222,6 +225,10 @@ var stringFlags = map[string]stringFlag{
 	ForkDriftRedisKeyPrefixFlag: {
 		description:  "Key prefix for drift records when --" + ForkDriftStorageFlag + "=redis. Fork-only feature.",
 		defaultValue: "atlantis:fork:drift:",
+	},
+	// fork: scoped service-account tokens.
+	ForkSATokensFlag: {
+		description: "Path to the YAML file that defines scoped service-account tokens for /api/* (id, secret_sha256, actions, repos). Empty disables it (default). Requires --api-secret. Fork-only feature.",
 	},
 	ADTokenFlag: {
 		description: "Azure DevOps token of API user. Can also be specified via the ATLANTIS_AZUREDEVOPS_TOKEN environment variable.",

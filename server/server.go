@@ -68,6 +68,7 @@ import (
 	"github.com/runatlantis/atlantis/server/events/vcs/gitlab"
 	"github.com/runatlantis/atlantis/server/events/webhooks"
 	forkoidc "github.com/runatlantis/atlantis/server/fork/oidc"
+	forksa "github.com/runatlantis/atlantis/server/fork/sactoken"
 	"github.com/runatlantis/atlantis/server/i18n"
 	"github.com/runatlantis/atlantis/server/logging"
 )
@@ -122,7 +123,8 @@ type Server struct {
 	KeyLastRefreshTime             time.Time
 	SSLCert                        *tls.Certificate
 	Drainer                        *events.Drainer
-	ForkOIDC                       *forkoidc.Manager // fork: nil unless --fork-oidc is set
+	ForkOIDC                       *forkoidc.Manager  // fork: nil unless --fork-oidc is set
+	ForkSATokens                   *forksa.Authorizer // fork: nil unless --fork-sa-tokens is set
 	WebAuthentication              bool
 	WebUsername                    string
 	WebPassword                    string
@@ -1205,6 +1207,10 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		database:                       database,
 	}
 
+	if server.ForkSATokens, err = newForkSATokens(userConfig, logger); err != nil { // fork (US-032)
+		return nil, err
+	}
+
 	// fork: OIDC login (US-030)
 	if server.ForkOIDC, err = newForkOIDC(userConfig, logger); err != nil {
 		return nil, err
@@ -1283,7 +1289,8 @@ func (s *Server) Start() error {
 		StackAll:   false,
 		StackSize:  1024 * 8,
 	}, NewRequestLogger(s))
-	s.useForkOIDC(n) // fork
+	s.useForkSATokens(n) // fork: before OIDC
+	s.useForkOIDC(n)     // fork
 	n.UseHandler(s.Router)
 
 	defer s.Logger.Flush()
