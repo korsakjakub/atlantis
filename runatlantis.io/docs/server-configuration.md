@@ -788,6 +788,70 @@ ATLANTIS_FORK_OIDC_CONFIG=/etc/atlantis/oidc.yaml
 
 Fork-only. Path to the YAML file defining the OIDC presets (issuer, client ID, scopes, claim map). See `fork/docs/oidc.md`.
 
+### `--fork-queue-backend`
+
+```bash
+atlantis server --fork-queue-backend=redis-streams --fork-queue-redis-url=redis://redis.example.com:6379/0
+# or
+ATLANTIS_FORK_QUEUE_BACKEND=redis-streams
+```
+
+Fork-only. Where `atlantis plan`/`apply`/autoplan commands wait before they run: `in-process`
+(default, identical to upstream: commands run inline) or `redis-streams`, which puts each command on
+a Redis Stream so it survives a restart of the consumer. Delivery is at-least-once; a command with the
+same repo, pull request, command, workspace/dir/project **and** identical flags and author (autoplan:
+same head commit) that is still queued or running is dropped as a duplicate, so a push of a new commit
+or a command with other flags is never dropped. Requires Redis 6.2+. The queued payload holds pull
+request and user data but no VCS credentials (they are re-added from the server's config when the
+command runs); still protect that Redis with ACLs and TLS. With the queue on, `--parallel-pool-size`
+is also the number of commands run at once. `redis-streams` without `--fork-queue-redis-url` is a
+startup error. See ADR 0010.
+
+### `--fork-queue-claim-idle-seconds`
+
+```bash
+atlantis server --fork-queue-claim-idle-seconds=300
+# or
+ATLANTIS_FORK_QUEUE_CLAIM_IDLE_SECONDS=300
+```
+
+Fork-only. Seconds a received queued command may stay unacknowledged before another consumer takes it
+over. A running command renews its lease every third of this interval, so it only bounds how fast a
+crashed consumer's command is recovered. Defaults to `300`.
+
+### `--fork-queue-max-attempts`
+
+```bash
+atlantis server --fork-queue-max-attempts=3
+# or
+ATLANTIS_FORK_QUEUE_MAX_ATTEMPTS=3
+```
+
+Fork-only. Deliveries of a queued command before it is moved to the dead-letter stream
+(`<prefix>dlq`). Defaults to `3`.
+
+### `--fork-queue-redis-key-prefix`
+
+```bash
+atlantis server --fork-queue-redis-key-prefix="atlantis:fork:queue:"
+# or
+ATLANTIS_FORK_QUEUE_REDIS_KEY_PREFIX="atlantis:fork:queue:"
+```
+
+Fork-only. Prefix for every Redis key used when `--fork-queue-backend=redis-streams`.
+Defaults to `atlantis:fork:queue:`.
+
+### `--fork-queue-redis-url`
+
+```bash
+atlantis server --fork-queue-backend=redis-streams --fork-queue-redis-url=rediss://user:pass@redis.example.com:6379/0
+# or
+ATLANTIS_FORK_QUEUE_REDIS_URL=redis://redis.example.com:6379/0
+```
+
+Fork-only. Redis URL (`redis://` or `rediss://` for TLS) for `--fork-queue-backend=redis-streams`.
+Required for that backend. Unlike the drift storage it does not reuse the `--redis-*` flags.
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash

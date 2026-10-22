@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/runatlantis/atlantis/server"
+	"github.com/runatlantis/atlantis/server/core/queue"
 	"github.com/runatlantis/atlantis/server/events/vcs/bitbucketcloud"
 	"github.com/runatlantis/atlantis/server/i18n"
 	"github.com/runatlantis/atlantis/server/logging"
@@ -172,6 +173,13 @@ const (
 	ForkDriftRedisKeyPrefixFlag = "fork-drift-redis-key-prefix"
 	ForkDriftRetentionHoursFlag = "fork-drift-retention-hours"
 
+	// fork: queue backend (US-040).
+	ForkQueueBackendFlag          = "fork-queue-backend"
+	ForkQueueRedisURLFlag         = "fork-queue-redis-url"
+	ForkQueueRedisKeyPrefixFlag   = "fork-queue-redis-key-prefix"
+	ForkQueueMaxAttemptsFlag      = "fork-queue-max-attempts"
+	ForkQueueClaimIdleSecondsFlag = "fork-queue-claim-idle-seconds"
+
 	// NOTE: Must manually set these as defaults in the setDefaults function.
 	DefaultADBasicUser                  = ""
 	DefaultADBasicPassword              = ""
@@ -214,6 +222,18 @@ const (
 )
 
 var stringFlags = map[string]stringFlag{
+	// fork: queue backend.
+	ForkQueueBackendFlag: {
+		description:  "Command queue backend: 'in-process' or 'redis-streams' (requires --" + ForkQueueRedisURLFlag + "). Fork-only feature.",
+		defaultValue: "in-process",
+	},
+	ForkQueueRedisURLFlag: {
+		description: "Redis URL (redis://[user:password@]host:port/db) for --" + ForkQueueBackendFlag + "=redis-streams. Fork-only feature.",
+	},
+	ForkQueueRedisKeyPrefixFlag: {
+		description:  "Key prefix for the Redis Streams queue. Fork-only feature.",
+		defaultValue: "atlantis:fork:queue:",
+	},
 	// fork: drift storage backend.
 	ForkDriftStorageFlag: {
 		description:  "Storage backend for drift detection results: 'memory' or 'redis' (uses the --redis-* flags). Fork-only feature.",
@@ -721,6 +741,15 @@ var boolFlags = map[string]boolFlag{
 	},
 }
 var intFlags = map[string]intFlag{
+	// fork: queue backend.
+	ForkQueueMaxAttemptsFlag: {
+		description:  "Deliveries of a queued command before it is dead-lettered. Fork-only feature.",
+		defaultValue: 3,
+	},
+	ForkQueueClaimIdleSecondsFlag: {
+		description:  "Seconds a received queued command may stay unacked before another consumer takes it over. Fork-only feature.",
+		defaultValue: 300,
+	},
 	// fork: drift storage backend.
 	ForkDriftRetentionHoursFlag: {
 		description:  "Retention in hours for drift records when --" + ForkDriftStorageFlag + "=redis. 0 disables expiry. Fork-only feature.",
@@ -1046,6 +1075,19 @@ func (s *ServerCmd) setDefaults(c *server.UserConfig, v *viper.Viper) {
 	if c.MarkdownTemplateOverridesDir == "" {
 		c.MarkdownTemplateOverridesDir = DefaultMarkdownTemplateOverridesDir
 	}
+	// fork: queue backend.
+	if c.ForkQueueBackend == "" {
+		c.ForkQueueBackend = "in-process"
+	}
+	if c.ForkQueueRedisKeyPrefix == "" {
+		c.ForkQueueRedisKeyPrefix = "atlantis:fork:queue:"
+	}
+	if c.ForkQueueMaxAttempts == 0 {
+		c.ForkQueueMaxAttempts = 3
+	}
+	if c.ForkQueueClaimIdleSeconds == 0 {
+		c.ForkQueueClaimIdleSeconds = 300
+	}
 	// fork: drift storage backend.
 	if c.ForkDriftStorage == "" {
 		c.ForkDriftStorage = "memory"
@@ -1216,6 +1258,17 @@ func (s *ServerCmd) validate(userConfig server.UserConfig) error {
 
 	if userConfig.TFEHostname != DefaultTFEHostname && userConfig.TFEToken == "" {
 		return fmt.Errorf("if setting --%s, must set --%s", TFEHostnameFlag, TFETokenFlag)
+	}
+
+	// fork: queue backend.
+	if err := queue.Validate(userConfig.ForkQueueBackend, userConfig.ForkQueueRedisURL); err != nil {
+		return fmt.Errorf("--%s: %w", ForkQueueBackendFlag, err)
+	}
+	if userConfig.ForkQueueMaxAttempts < 1 {
+		return fmt.Errorf("--%s must be at least 1", ForkQueueMaxAttemptsFlag)
+	}
+	if userConfig.ForkQueueClaimIdleSeconds < 1 {
+		return fmt.Errorf("--%s must be at least 1", ForkQueueClaimIdleSecondsFlag)
 	}
 
 	// fork: drift storage backend.
