@@ -1060,6 +1060,64 @@ $$$
 `,
 		},
 		{
+			"single successful state mv",
+			command.State,
+			"mv",
+			[]command.ProjectResult{
+				{
+					ProjectCommandOutput: command.ProjectCommandOutput{
+						StateRmSuccess: &models.StateRmSuccess{
+							Output:    "Move \"a.b\" to \"a.c\"",
+							RePlanCmd: "atlantis plan -d path -w workspace",
+						},
+					},
+					Workspace:   "workspace",
+					RepoRelDir:  "path",
+					ProjectName: "projectname",
+				},
+			},
+			models.Github,
+			`
+Ran State $mv$ for project: $projectname$ dir: $path$ workspace: $workspace$
+
+$$$diff
+Move "a.b" to "a.c"
+$$$
+
+:put_litter_in_its_place: A plan file was discarded. Re-plan would be required before applying.
+
+* :repeat: To **plan** this project again, comment:
+  $$$shell
+  atlantis plan -d path -w workspace
+  $$$
+`,
+		},
+		{
+			"single failed state mv keeps the terraform output",
+			command.State,
+			"mv",
+			[]command.ProjectResult{
+				{
+					ProjectCommandOutput: command.ProjectCommandOutput{
+						Error: errors.New("exit status 1\nError: Invalid source address"),
+					},
+					Workspace:   "workspace",
+					RepoRelDir:  "path",
+					ProjectName: "projectname",
+				},
+			},
+			models.Github,
+			`
+Ran State $mv$ for project: $projectname$ dir: $path$ workspace: $workspace$
+
+**State Error**
+$$$
+exit status 1
+Error: Invalid source address
+$$$
+`,
+		},
+		{
 			"single successful apply",
 			command.Apply,
 			"",

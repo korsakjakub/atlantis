@@ -48,6 +48,13 @@ func TestStateMvStepRunner_Run(t *testing.T) {
 			expPlanGone: true,
 		},
 		{
+			description: "configured addresses are literal, $ is not expanded",
+			cmdName:     command.Plan,
+			extraArgs:   []string{`a["$HOME"]`, "a.c"},
+			expCmd:      []string{"state", "mv", `a["$HOME"]`, "a.c"},
+			expPlanGone: true,
+		},
+		{
 			description: "terraform failure is returned and the plan is kept",
 			cmdName:     command.State,
 			commentArgs: []string{"a.b", "a.c"},
@@ -84,7 +91,7 @@ func TestStateMvStepRunner_Run(t *testing.T) {
 
 			Equals(t, c.tfErr, err)
 			Equals(t, "output", output) // stderr/stdout is never hidden
-			terraform.VerifyWasCalledOnce().RunCommandWithVersion(Any[command.ProjectContext](), Eq(tmpDir), Eq(c.expCmd), Eq(map[string]string(nil)), Any[tf.Distribution](), Eq(tfVersion), Eq(workspace))
+			terraform.VerifyWasCalledOnce().RunCommandWithVersion(Eq(ctx), Eq(tmpDir), Eq(c.expCmd), Eq(map[string]string(nil)), Any[tf.Distribution](), Eq(tfVersion), Eq(workspace))
 			_, statErr := os.Stat(planPath)
 			Equals(t, c.expPlanGone, os.IsNotExist(statErr))
 		})

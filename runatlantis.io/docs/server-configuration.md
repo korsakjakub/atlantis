@@ -800,6 +800,12 @@ Fork-only. Enable the `mv: {from, to}` workflow step and the `atlantis state mv 
 `terraform state mv` through the pipeline. With the flag off (default), a config that uses an `mv` step fails validation
 and the comment command is refused. See `docs/adr/0009-fork-state-mv-step.md`.
 
+The comment command also needs `state` in `--allow-commands`. Consider
+`--blocked-extra-args=-chdir,-plugin-dir,-state,-state-out,-backup,-backup-out`, because `state mv` accepts Terraform
+flags after `--`. Enabling the flag adds a default `state_mv` stage (`[init, mv]`) to every workflow, including those
+where `state_rm` was emptied; override it with `state_mv: {steps: []}`. A configured `mv` step in the `plan` stage
+changes state before the PR is approved; see [Custom Workflows](custom-workflows.md).
+
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 
 ```bash

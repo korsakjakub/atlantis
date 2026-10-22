@@ -33,12 +33,8 @@ func NewStateMvStepRunner(terraformExecutor TerraformExec, defaultTfDistribution
 }
 
 func (p *stateMvStepRunner) Run(ctx command.ProjectContext, extraArgs []string, path string, envs map[string]string) (string, error) {
-	// extra_args comes from configuration, so environment variable references
-	// in it may be expanded. Marked on this copy of the context; everything
-	// else, including comment args, stays literal.
-	if len(extraArgs) > 0 {
-		ctx.ExpandableArgs = extraArgs
-	}
+	// extraArgs holds only the configured from/to addresses. Unlike other
+	// steps they are never marked expandable: `$` is legal in an address key.
 	tfDistribution := p.defaultTFDistribution
 	tfVersion := p.defaultTFVersion
 	if ctx.TerraformDistribution != nil {

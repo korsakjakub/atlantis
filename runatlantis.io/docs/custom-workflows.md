@@ -586,7 +586,15 @@ state_rm:
 #### `mv` step (fork-only)
 
 Requires `--fork-state-mv`. Runs `terraform state mv FROM TO` as a pipeline step. Put it before `plan` so the plan
-proves the rename left no diff. The step mutates state on every run, so remove it after the rename has been applied.
+proves the rename left no diff.
+
+::: warning
+In the `plan` stage the step changes the real state **before the pull request is approved**, on autoplan, whatever
+`--allow-commands` says. It runs on every plan, so the next plan (any push or `atlantis plan`) fails because the source
+address no longer exists, until you remove the step. A pull request closed without merging leaves the state moved.
+For a plain rename prefer Terraform's native `moved {}` block, which is idempotent and reviewed in the plan; use this
+step only for what `moved {}` cannot express.
+:::
 
 ```yaml
 plan:
@@ -598,7 +606,12 @@ plan:
   - plan
 ```
 
-`from` and `to` are required. The bare `mv` in the `state_mv` stage takes the addresses from `atlantis state mv FROM TO`.
+`from` and `to` are required and are not expanded (no `$VAR`). `extra_args` is not supported for `mv`. The bare `mv` in
+the `state_mv` stage takes the addresses from `atlantis state mv FROM TO`; do not use a bare `mv` in other stages.
+
+Once the flag is on, every workflow gets the default `state_mv` stage `[init, mv]`, even if the operator emptied
+`state_rm`. Set `state_mv: {steps: []}` to disable it for a workflow. The `atlantis state mv` comment command needs
+`state` in `--allow-commands` and has no approval gate, like `state rm`.
 
 ### Stage
 

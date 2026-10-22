@@ -178,6 +178,9 @@ func (s Step) Validate() error {
 			if !s.validStepName(stepName) {
 				return fmt.Errorf("%q is not a valid step type", stepName)
 			}
+			if stepName == MvStepName {
+				return fmt.Errorf("%q step takes %q and %q, not %s", MvStepName, MvFromArgKey, MvToArgKey, ExtraArgsKey)
+			}
 			var argKeys []string
 			for k := range args {
 				argKeys = append(argKeys, k)
@@ -390,6 +393,10 @@ func (s Step) Validate() error {
 			}
 			// Sort so tests can be deterministic.
 			sort.Strings(argKeys)
+			if stepName == MvStepName {
+				return fmt.Errorf("%q step only supports keys %q and %q, found extra keys %q",
+					stepName, MvFromArgKey, MvToArgKey, strings.Join(argKeys, ","))
+			}
 			return fmt.Errorf("%q steps only support keys %q, %q, %q and %q, found extra keys %q",
 				stepName, CommandArgKey, OutputArgKey, ShellArgKey, ShellArgsArgKey, strings.Join(argKeys, ","))
 		}
