@@ -799,8 +799,13 @@ ATLANTIS_FORK_QUEUE_BACKEND=redis-streams
 Fork-only. Where `atlantis plan`/`apply`/autoplan commands wait before they run: `in-process`
 (default, identical to upstream: commands run inline) or `redis-streams`, which puts each command on
 a Redis Stream so it survives a restart of the consumer. Delivery is at-least-once; a command with the
-same repo, pull request, command and workspace/dir/project that is still queued or running is dropped
-as a duplicate. `redis-streams` without `--fork-queue-redis-url` is a startup error. See ADR 0010.
+same repo, pull request, command, workspace/dir/project **and** identical flags and author (autoplan:
+same head commit) that is still queued or running is dropped as a duplicate, so a push of a new commit
+or a command with other flags is never dropped. Requires Redis 6.2+. The queued payload holds pull
+request and user data but no VCS credentials (they are re-added from the server's config when the
+command runs); still protect that Redis with ACLs and TLS. With the queue on, `--parallel-pool-size`
+is also the number of commands run at once. `redis-streams` without `--fork-queue-redis-url` is a
+startup error. See ADR 0010.
 
 ### `--fork-queue-claim-idle-seconds`
 
@@ -811,7 +816,8 @@ ATLANTIS_FORK_QUEUE_CLAIM_IDLE_SECONDS=300
 ```
 
 Fork-only. Seconds a received queued command may stay unacknowledged before another consumer takes it
-over. Set it above your longest plan/apply. Defaults to `300`.
+over. A running command renews its lease every third of this interval, so it only bounds how fast a
+crashed consumer's command is recovered. Defaults to `300`.
 
 ### `--fork-queue-max-attempts`
 

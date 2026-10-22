@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -27,6 +28,8 @@ type RedisStreams struct {
 	client redis.Cmdable
 	opts   Options
 	prefix string
+
+	groupReady atomic.Bool
 }
 
 // NewRedisStreams builds the backend on an existing client. prefix namespaces all keys.
@@ -41,9 +44,24 @@ func (r *RedisStreams) dedup(j Job) string {
 }
 
 func (r *RedisStreams) ensureGroup(ctx context.Context) error {
+	if r.groupReady.Load() {
+		return nil
+	}
 	err := r.client.XGroupCreateMkStream(ctx, r.stream(), redisGroup, "0").Err()
 	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
 		return fmt.Errorf("creating consumer group: %w", err)
+	}
+	r.groupReady.Store(true)
+	return nil
+}
+
+// Extend resets the idle time of the job's pending entry (XCLAIM ... JUSTID by its owner).
+func (r *RedisStreams) Extend(ctx context.Context, job Job) error {
+	err := r.client.XClaimJustID(ctx, &redis.XClaimArgs{
+		Stream: r.stream(), Group: redisGroup, Consumer: job.Consumer, Messages: []string{job.ID},
+	}).Err()
+	if err != nil {
+		return fmt.Errorf("extending job lease: %w", err)
 	}
 	return nil
 }
@@ -80,7 +98,9 @@ func (r *RedisStreams) Enqueue(ctx context.Context, job Job) (bool, error) {
 		return false, nil
 	}
 	if err := r.client.XAdd(ctx, &redis.XAddArgs{Stream: r.stream(), Values: values}).Err(); err != nil {
-		r.client.Del(ctx, r.dedup(job))
+		if derr := r.client.Del(ctx, r.dedup(job)).Err(); derr != nil {
+			err = fmt.Errorf("%w (releasing idempotency key: %w)", err, derr)
+		}
 		return false, fmt.Errorf("adding job to stream: %w", err)
 	}
 	return true, nil
@@ -114,7 +134,12 @@ func (r *RedisStreams) Receive(ctx context.Context, consumer string) (*Job, erro
 		}
 		msgs = res[0].Messages
 	}
-	return decode(msgs[0])
+	j, err := decode(msgs[0])
+	if err != nil {
+		return nil, err
+	}
+	j.Consumer = consumer
+	return j, nil
 }
 
 func (r *RedisStreams) Ack(ctx context.Context, job Job) error {

@@ -29,13 +29,14 @@ var ErrAbandon = errors.New("abandon job")
 
 // Job is one unit of work. Repo+Pull+Command+Step form the idempotency key.
 type Job struct {
-	// ID is the backend delivery id, set by Receive.
-	ID      string `json:"-"`
-	Repo    string `json:"repo"`
-	Pull    int    `json:"pull"`
-	Command string `json:"command"`
-	Step    string `json:"step"`
-	Payload []byte `json:"payload,omitempty"`
+	// ID and Consumer are the delivery id and owner, set by Receive.
+	ID       string `json:"-"`
+	Consumer string `json:"-"`
+	Repo     string `json:"repo"`
+	Pull     int    `json:"pull"`
+	Command  string `json:"command"`
+	Step     string `json:"step"`
+	Payload  []byte `json:"payload,omitempty"`
 	// Attempt is 1 for the first delivery.
 	Attempt int `json:"attempt"`
 	// Err is the last failure; only set on DLQ entries.
@@ -55,6 +56,9 @@ type Backend interface {
 	// Receive returns the next job for the consumer, first taking over jobs
 	// whose previous consumer went idle. It returns nil when nothing is ready.
 	Receive(ctx context.Context, consumer string) (*Job, error)
+	// Extend renews the lease of a received job so it is not taken over while
+	// its consumer is still working on it.
+	Extend(ctx context.Context, job Job) error
 	// Ack marks the job done and releases its idempotency key.
 	Ack(ctx context.Context, job Job) error
 	// Retry requeues the job with Attempt+1, or moves it to the DLQ (reporting

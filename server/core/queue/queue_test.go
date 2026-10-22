@@ -101,6 +101,7 @@ func TestExecutor_ConsumerRestartMidJob(t *testing.T) {
 			// Consumer B (restarted instance) reclaims and finishes the job.
 			cctx, cancel := context.WithCancel(ctx)
 			done := make(chan struct{})
+			stopped := make(chan struct{})
 			ex := &queue.Executor{
 				Backend: b, Log: logging.NewNoopLogger(t), Name: "B", Workers: 1, Poll: 10 * time.Millisecond,
 				Handler: func(context.Context, queue.Job) error {
@@ -114,7 +115,7 @@ func TestExecutor_ConsumerRestartMidJob(t *testing.T) {
 					return nil
 				},
 			}
-			go ex.Run(cctx)
+			go func() { ex.Run(cctx); close(stopped) }()
 			select {
 			case <-done:
 			case <-time.After(3 * time.Second):
@@ -122,6 +123,7 @@ func TestExecutor_ConsumerRestartMidJob(t *testing.T) {
 			}
 			time.Sleep(3 * ex.Poll) // would expose a second execution
 			cancel()
+			<-stopped
 
 			Equals(t, int32(1), completed.Load())
 			Equals(t, int32(2), started.Load()) // crashed attempt + the completed one
@@ -145,11 +147,51 @@ func TestExecutor_FailingJobGoesToDLQ(t *testing.T) {
 		},
 	}
 	_, _ = ex.Submit(context.Background(), queue.Job{Repo: "r", Pull: 1, Command: "plan"})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go ex.Run(ctx)
 	Assert(t, eventually(func() bool { d, _ := b.DLQ(ctx); return len(d) == 1 }), "job dead-lettered")
 	Equals(t, int32(queuetest.MaxAttempts), calls.Load())
+}
+
+// A job running longer than ClaimIdle is kept alive by the heartbeat, so a second
+// consumer (another replica or a free worker) does not run it again.
+func TestExecutor_LongJobIsNotStolen(t *testing.T) {
+	for name, f := range map[string]queuetest.Factory{"in-process": memoryFactory, "redis-streams": redisFactory} {
+		t.Run(name, func(t *testing.T) {
+			b := f(t)
+			var runs atomic.Int32
+			mk := func(n string) *queue.Executor {
+				return &queue.Executor{
+					Backend: b, Log: logging.NewNoopLogger(t), Name: n, Workers: 2, Poll: 5 * time.Millisecond,
+					Heartbeat: queuetest.ClaimIdle / 3,
+					Handler: func(context.Context, queue.Job) error {
+						runs.Add(1)
+						time.Sleep(3 * queuetest.ClaimIdle)
+						return nil
+					},
+				}
+			}
+			_, _ = b.Enqueue(t.Context(), queue.Job{Repo: "r", Pull: 1, Command: "apply"})
+			go mk("a").Run(t.Context())
+			go mk("b").Run(t.Context())
+			time.Sleep(5 * queuetest.ClaimIdle)
+			Equals(t, int32(1), runs.Load())
+		})
+	}
+}
+
+func TestExecutor_PausedDoesNotReceive(t *testing.T) {
+	b := queue.NewMemory(opts)
+	_, _ = b.Enqueue(t.Context(), queue.Job{Repo: "r", Pull: 1, Command: "plan"})
+	ex := &queue.Executor{
+		Backend: b, Log: logging.NewNoopLogger(t), Name: "w", Poll: 5 * time.Millisecond,
+		Paused:  func() bool { return true },
+		Handler: func(context.Context, queue.Job) error { t.Error("must not run while paused"); return nil },
+	}
+	go ex.Run(t.Context())
+	time.Sleep(50 * time.Millisecond)
+	j, _ := b.Receive(t.Context(), "other")
+	Assert(t, j != nil, "job is still queued, not claimed by the paused executor")
 }
 
 func eventually(f func() bool) bool {

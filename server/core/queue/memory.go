@@ -43,13 +43,14 @@ func (m *Memory) Enqueue(_ context.Context, job Job) (bool, error) {
 	return true, nil
 }
 
-func (m *Memory) Receive(_ context.Context, _ string) (*Job, error) {
+func (m *Memory) Receive(_ context.Context, consumer string) (*Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
 	for _, c := range m.inflight {
 		if now.Sub(c.at) >= m.opts.ClaimIdle {
 			c.at = now
+			c.job.Consumer = consumer
 			j := c.job
 			return &j, nil
 		}
@@ -61,8 +62,18 @@ func (m *Memory) Receive(_ context.Context, _ string) (*Job, error) {
 	m.ready = m.ready[1:]
 	m.seq++
 	j.ID = strconv.Itoa(m.seq)
+	j.Consumer = consumer
 	m.inflight[j.ID] = &claim{job: j, at: now}
 	return &j, nil
+}
+
+func (m *Memory) Extend(_ context.Context, job Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.inflight[job.ID]; ok {
+		c.at = time.Now()
+	}
+	return nil
 }
 
 func (m *Memory) Ack(_ context.Context, job Job) error {

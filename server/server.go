@@ -1120,11 +1120,15 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 			return nil, fmt.Errorf("initializing queue backend: %w", err)
 		}
 		host, _ := os.Hostname()
+		claimIdle := time.Duration(userConfig.ForkQueueClaimIdleSeconds) * time.Second
 		queueExecutor = &queue.Executor{
 			Backend: backend, Handler: commandRunner.HandleQueuedJob, Log: logger,
 			Workers: max(userConfig.ParallelPoolSize, 1), Name: fmt.Sprintf("%s-%d", host, os.Getpid()),
+			Heartbeat: claimIdle / 3,
+			Paused:    func() bool { return drainer.GetStatus().ShuttingDown },
 		}
 		commandRunner.Queue = queueExecutor
+		commandRunner.RepoAuth = eventParser.RestoreCloneURL
 		logger.Info("command queue backend is %q", userConfig.ForkQueueBackend)
 	}
 

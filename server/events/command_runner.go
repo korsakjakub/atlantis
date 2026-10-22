@@ -143,6 +143,9 @@ type DefaultCommandRunner struct {
 	// Queue, when set (fork US-040), makes RunCommentCommand and RunAutoplanCommand
 	// enqueue instead of executing inline; nil keeps the in-process behaviour.
 	Queue *queue.Executor
+	// RepoAuth restores the VCS credentials in a repo's CloneURL, which are
+	// stripped before a job is serialized so no secret reaches the queue.
+	RepoAuth func(models.Repo) (models.Repo, error)
 }
 
 // runAutoplanCommand runs plan and policy_checks when a pull request is opened or updated.
@@ -154,7 +157,11 @@ func (c *DefaultCommandRunner) runAutoplanCommand(baseRepo models.Repo, headRepo
 		return
 	}
 	defer c.Drainer.OpDone()
+	c.doAutoplanCommand(baseRepo, headRepo, pull, user)
+}
 
+// doAutoplanCommand is runAutoplanCommand's body; the caller holds a Drainer op.
+func (c *DefaultCommandRunner) doAutoplanCommand(baseRepo models.Repo, headRepo models.Repo, pull models.PullRequest, user models.User) {
 	log := c.buildLogger(baseRepo.FullName, pull.Num)
 	defer c.logPanics(baseRepo, pull.Num, log)
 	status, err := c.PullStatusFetcher.GetPullStatus(pull)
@@ -473,7 +480,11 @@ func (c *DefaultCommandRunner) runCommentCommand(baseRepo models.Repo, maybeHead
 		return
 	}
 	defer c.Drainer.OpDone()
+	c.doCommentCommand(baseRepo, maybeHeadRepo, maybePull, user, pullNum, cmd)
+}
 
+// doCommentCommand is runCommentCommand's body; the caller holds a Drainer op.
+func (c *DefaultCommandRunner) doCommentCommand(baseRepo models.Repo, maybeHeadRepo *models.Repo, maybePull *models.PullRequest, user models.User, pullNum int, cmd *CommentCommand) {
 	log := c.buildLogger(baseRepo.FullName, pullNum)
 	defer c.logPanics(baseRepo, pullNum, log)
 

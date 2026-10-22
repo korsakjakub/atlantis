@@ -27,6 +27,11 @@ type Executor struct {
 	Name string
 	// Poll is the sleep between empty receives (default 200ms).
 	Poll time.Duration
+	// Heartbeat is how often a running job's lease is extended so it is not
+	// taken over while still alive; set it to ClaimIdle/3. Zero disables it.
+	Heartbeat time.Duration
+	// Paused, when set and true, stops consumers from receiving new jobs (draining).
+	Paused func() bool
 }
 
 // Submit enqueues a job. It returns false for a duplicate (same idempotency key still pending).
@@ -38,11 +43,7 @@ func (e *Executor) Submit(ctx context.Context, job Job) (bool, error) {
 func (e *Executor) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for i := range max(e.Workers, 1) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			e.loop(ctx, fmt.Sprintf("%s-%d", e.Name, i))
-		}()
+		wg.Go(func() { e.loop(ctx, fmt.Sprintf("%s-%d", e.Name, i)) })
 	}
 	wg.Wait()
 }
@@ -53,9 +54,13 @@ func (e *Executor) loop(ctx context.Context, consumer string) {
 		poll = 200 * time.Millisecond
 	}
 	for ctx.Err() == nil {
-		job, err := e.Backend.Receive(ctx, consumer)
-		if err != nil && ctx.Err() == nil {
-			e.Log.Err("receiving queued job: %s", err)
+		var job *Job
+		if e.Paused == nil || !e.Paused() {
+			var err error
+			job, err = e.Backend.Receive(ctx, consumer)
+			if err != nil && ctx.Err() == nil {
+				e.Log.Err("receiving queued job: %s", err)
+			}
 		}
 		if job == nil {
 			select {
@@ -69,6 +74,24 @@ func (e *Executor) loop(ctx context.Context, consumer string) {
 }
 
 func (e *Executor) safeHandle(ctx context.Context, job Job) (err error) {
+	if e.Heartbeat > 0 {
+		stop := make(chan struct{})
+		defer close(stop)
+		go func() {
+			t := time.NewTicker(e.Heartbeat)
+			defer t.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-t.C:
+					if err := e.Backend.Extend(context.WithoutCancel(ctx), job); err != nil {
+						e.Log.Warn("extending lease of queued job %q: %s", job.Key(), err)
+					}
+				}
+			}
+		}()
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic: %v", r)

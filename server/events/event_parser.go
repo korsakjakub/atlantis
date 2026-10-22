@@ -366,6 +366,34 @@ type EventParser struct {
 	AzureDevopsUser    string
 }
 
+// RestoreCloneURL rebuilds repo.CloneURL (cleared when a command is queued, fork US-040)
+// from SanitizedCloneURL and the server's token for the repo's VCS host, the same
+// way models.NewRepo derives it.
+func (e *EventParser) RestoreCloneURL(repo models.Repo) (models.Repo, error) {
+	var token string
+	switch repo.VCSHost.Type {
+	case models.Github:
+		token = e.GithubToken
+		if e.GithubTokenFile != "" {
+			content, err := os.ReadFile(e.GithubTokenFile)
+			if err != nil {
+				return models.Repo{}, fmt.Errorf("failed reading github token file: %w", err)
+			}
+			token = string(content)
+		}
+	case models.Gitlab:
+		token = e.GitlabToken
+	case models.Gitea:
+		token = e.GiteaToken
+	case models.BitbucketCloud, models.BitbucketServer:
+		token = e.BitbucketToken
+	case models.AzureDevops:
+		token = e.AzureDevopsToken
+	}
+	repo.CloneURL = strings.ReplaceAll(repo.SanitizedCloneURL, ":<redacted>@", ":"+url.QueryEscape(token)+"@")
+	return repo, nil
+}
+
 func (e *EventParser) ParseAPIPlanRequest(vcsHostType models.VCSHostType, repoFullName string, cloneURL string) (models.Repo, error) {
 	switch vcsHostType {
 	case models.Github:
