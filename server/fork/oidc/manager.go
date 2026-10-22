@@ -314,7 +314,7 @@ func (m *Manager) cookie(name, value, path string, expires time.Time) *http.Cook
 }
 
 func (m *Manager) expire(name, path string) *http.Cookie {
-	c := m.cookie(name, "", path, time.Unix(0, 0))
+	c := m.cookie(name, "", path, time.Unix(0, 0)) //nolint:gosec // G124: m.cookie sets Secure, HttpOnly and SameSite
 	c.MaxAge = -1
 	return c
 }
