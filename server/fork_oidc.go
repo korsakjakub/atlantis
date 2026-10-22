@@ -47,7 +47,7 @@ func (s *Server) useForkOIDC(n *negroni.Negroni) {
 }
 
 // newForkRBAC loads the RBAC config. It returns nil when --fork-rbac is off.
-func newForkRBAC(userConfig UserConfig) (*rbac.Engine, error) {
+func newForkRBAC(userConfig UserConfig, logger logging.SimpleLogging) (*rbac.Engine, error) {
 	if !userConfig.ForkRBAC {
 		return nil, nil
 	}
@@ -57,5 +57,10 @@ func newForkRBAC(userConfig UserConfig) (*rbac.Engine, error) {
 	if userConfig.ForkOIDC == "" || userConfig.ForkOIDC == forkoidc.Off {
 		return nil, errors.New("--fork-rbac requires --fork-oidc")
 	}
-	return rbac.LoadFile(userConfig.ForkRBACConfig)
+	e, err := rbac.LoadFile(userConfig.ForkRBACConfig)
+	if err != nil {
+		return nil, err
+	}
+	e.Logger = logger
+	return e, nil
 }

@@ -6,7 +6,8 @@ const (
 	ForkRBACConfigFlag = "fork-rbac-config"
 )
 
-func init() {
+// init registers the fork flags so cmd/server.go stays free of fork edits (upstream syncs).
+func init() { //nolint:gochecknoinits
 	boolFlags[ForkRBACFlag] = boolFlag{
 		description:  "Enforce roles (viewer|plan|apply|approver|admin) per repo on the web UI, /api/* and PR commands. Requires --fork-oidc and --fork-rbac-config. Fork-only feature.",
 		defaultValue: false,

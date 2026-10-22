@@ -1,15 +1,20 @@
 package rbac
 
 import (
+	"bytes"
 	"encoding/base32"
+	"errors"
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/runatlantis/atlantis/server/events"
 	"github.com/runatlantis/atlantis/server/fork/oidc"
+	"github.com/runatlantis/atlantis/server/logging"
 	"go.yaml.in/yaml/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // LocalIssuer marks identities created by break-glass local login.
@@ -75,6 +80,9 @@ type Engine struct {
 	vcsUsers    map[string]scoped
 	local       map[string]*localUser
 	totp        *totpGuard
+	dummyHash   []byte // compared against for unknown local users, to equalise timing
+	// Logger is optional; set it before serving.
+	Logger logging.SimpleLogging
 }
 
 func newScoped(role string, repos []string) (scoped, error) {
@@ -88,8 +96,9 @@ func newScoped(role string, repos []string) (scoped, error) {
 	pats := make([]string, len(repos))
 	for i, p := range repos {
 		neg := strings.HasPrefix(p, "!")
-		// The VCS hostname is unknown for API requests, so match "<any>/owner/repo".
-		pats[i] = "*/" + strings.TrimPrefix(p, "!")
+		// The VCS hostname is unknown for API requests, so it is always "" and
+		// the candidate is "/owner/repo"; anchor the pattern on that leading "/".
+		pats[i] = "/" + strings.TrimPrefix(p, "!")
 		if neg {
 			pats[i] = "!" + pats[i]
 		}
@@ -112,7 +121,10 @@ func LoadFile(p string) (*Engine, error) {
 		return nil, fmt.Errorf("reading rbac config: %w", err)
 	}
 	var f File
-	if err := yaml.Unmarshal(b, &f); err != nil {
+	// Strict: a typo such as "repo:" must not silently widen a rule's scope.
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(&f); err != nil {
 		return nil, fmt.Errorf("parsing rbac config: %w", err)
 	}
 	return New(f, os.Getenv)
@@ -122,7 +134,14 @@ func LoadFile(p string) (*Engine, error) {
 func New(f File, getenv func(string) string) (*Engine, error) {
 	e := &Engine{vcsUsers: map[string]scoped{}, local: map[string]*localUser{}, ruleSrc: f.Rules, totp: newTOTPGuard()}
 	var err error
-	if f.DefaultRole != "" {
+	if e.dummyHash, err = bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.DefaultCost); err != nil {
+		return nil, err
+	}
+	switch f.DefaultRole {
+	case "":
+		return nil, errors.New("default_role is required (a role, or \"none\" for no access)")
+	case "none":
+	default:
 		if e.defaultRole, err = ParseRole(f.DefaultRole); err != nil {
 			return nil, fmt.Errorf("default_role: %w", err)
 		}
@@ -155,12 +174,26 @@ func New(f File, getenv func(string) string) (*Engine, error) {
 		if err != nil {
 			return nil, fmt.Errorf("vcs_users[%d]: %w", i, err)
 		}
-		e.vcsUsers[strings.ToLower(g.Username)] = s
+		key := strings.ToLower(g.Username)
+		if _, dup := e.vcsUsers[key]; dup {
+			return nil, fmt.Errorf("vcs_users[%d]: duplicate username %q", i, g.Username)
+		}
+		e.vcsUsers[key] = s
 	}
 	for i, u := range f.LocalUsers {
 		role, err := ParseRole(u.Role)
 		if err != nil || u.Name == "" || u.PasswordBcrypt == "" {
 			return nil, fmt.Errorf("local_users[%d]: name, password_bcrypt and a valid role are required (%v)", i, err)
+		}
+		if _, dup := e.local[u.Name]; dup {
+			return nil, fmt.Errorf("local_users[%d]: duplicate name %q", i, u.Name)
+		}
+		if _, err := bcrypt.Cost([]byte(u.PasswordBcrypt)); err != nil {
+			return nil, fmt.Errorf("local_users[%d]: password_bcrypt is not a bcrypt hash: %w", i, err)
+		}
+		// Password-only accounts would bypass the IdP and MFA, so they stay read-only.
+		if !u.BreakGlass && role > Viewer {
+			return nil, fmt.Errorf("local_users[%d]: roles above viewer require break_glass (TOTP)", i)
 		}
 		lu := &localUser{LocalUser: u, role: role}
 		if u.BreakGlass {
@@ -184,12 +217,7 @@ func claimMatches(r Rule, id oidc.Identity) bool {
 	ok := func(s string) bool { m, _ := path.Match(r.Value, s); return s != "" && m }
 	switch r.Claim {
 	case "groups":
-		for _, g := range id.Groups {
-			if ok(g) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(id.Groups, ok)
 	case "email":
 		return ok(id.Email)
 	case "name":

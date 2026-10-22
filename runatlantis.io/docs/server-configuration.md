@@ -798,7 +798,7 @@ ATLANTIS_FORK_RBAC=true
 
 Fork-only. Enforce roles (`viewer`, `plan`, `apply`, `approver`, `admin`) per repo on the web UI, `/api/*` and PR commands
 (for VCS users listed in the config). Requires `--fork-oidc` and `--fork-rbac-config`. Defaults to `false`.
-See `docs/adr/0006-fork-rbac.md`.
+See `docs/adr/0007-fork-rbac.md`.
 
 ### `--fork-rbac-config`
 
@@ -809,7 +809,7 @@ ATLANTIS_FORK_RBAC_CONFIG=/etc/atlantis/rbac.yaml
 ```
 
 Fork-only. Path to the YAML file that maps OIDC claims, VCS usernames and the API token to roles, and defines
-break-glass local accounts. See `docs/adr/0006-fork-rbac.md`.
+break-glass local accounts. See `docs/adr/0007-fork-rbac.md`.
 
 ### `--gh-allow-mergeable-bypass-apply` <Badge text="v0.30.0+" type="info"/>
 

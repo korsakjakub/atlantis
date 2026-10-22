@@ -1,6 +1,6 @@
 // Package rbac maps OIDC claims, VCS usernames and the API token to roles
 // per repository and enforces them on the web UI, /api/* and PR commands.
-// Fork-only feature, see docs/adr/0006-fork-rbac.md.
+// Fork-only feature, see docs/adr/0007-fork-rbac.md.
 package rbac
 
 import "fmt"

@@ -48,9 +48,11 @@ func exempt(p string) bool {
 
 // repoOf extracts the repository (owner/repo) a request targets, or "".
 // POST bodies are peeked and restored; the controllers still parse them.
+// The source must match what the controllers act on: the JSON body for
+// POST /api/*, the query for GET. The other one is ignored, never trusted.
 func repoOf(r *http.Request, w http.ResponseWriter) (string, bool) {
-	if repo := r.URL.Query().Get("repository"); repo != "" {
-		return repo, true
+	if r.Method == http.MethodGet {
+		return r.URL.Query().Get("repository"), true
 	}
 	if r.Method != http.MethodPost || r.Body == nil || !strings.HasPrefix(r.URL.Path, "/api/") {
 		return "", true
@@ -89,11 +91,20 @@ func (e *Engine) ServeHTTP(rw http.ResponseWriter, r *http.Request, next http.Ha
 		deny(rw, r) // unauthenticated UI request: fail closed
 		return
 	}
+	// Static assets carry no data: any authenticated identity may load them,
+	// so repo-scoped users can render the UI.
+	if id != nil && strings.HasPrefix(r.URL.Path, "/static/") {
+		next(rw, r)
+		return
+	}
 	repo, ok := repoOf(r, rw)
 	if !ok {
 		return
 	}
 	if !e.Authorize(id, ActionFor(r.Method, r.URL.Path), repo) {
+		if e.Logger != nil {
+			e.Logger.Debug("rbac denied %s %s repo %q", r.Method, r.URL.Path, repo)
+		}
 		deny(rw, r)
 		return
 	}

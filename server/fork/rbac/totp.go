@@ -70,22 +70,38 @@ func (g *totpGuard) fail(name string, now time.Time) {
 	}
 }
 
+func (e *Engine) warn(format string, args ...any) {
+	if e.Logger != nil {
+		e.Logger.Warn(format, args...)
+	}
+}
+
 // Authenticate is the oidc.Options.Fallback: HTTP Basic credentials of a
 // local break-glass account, plus a TOTP code when the account requires it.
 func (e *Engine) Authenticate(r *http.Request) (oidc.Identity, bool) {
 	name, pw, ok := r.BasicAuth()
+	if !ok {
+		return oidc.Identity{}, false
+	}
 	u := e.local[name]
-	if !ok || u == nil {
+	if u == nil {
+		_ = bcrypt.CompareHashAndPassword(e.dummyHash, []byte(pw)) // same cost as a real check
+		e.warn("break-glass login failed for unknown user %q from %s", name, r.RemoteAddr)
 		return oidc.Identity{}, false
 	}
 	now := time.Now()
+	// shortcut: lockout is per username, so anyone can lock an account for a minute
+	// while the IdP is down; key it by IP+user if that abuse shows up.
 	if e.totp.locked(name, now) {
+		e.warn("break-glass login rejected for locked user %q from %s", name, r.RemoteAddr)
 		return oidc.Identity{}, false
 	}
 	if bcrypt.CompareHashAndPassword([]byte(u.PasswordBcrypt), []byte(pw)) != nil ||
 		(len(u.seed) > 0 && !e.totp.check(name, u.seed, r.Header.Get(totpHeader), now)) {
 		e.totp.fail(name, now)
+		e.warn("break-glass login failed for user %q from %s", name, r.RemoteAddr)
 		return oidc.Identity{}, false
 	}
+	e.warn("break-glass login succeeded for user %q from %s", name, r.RemoteAddr)
 	return oidc.Identity{Subject: LocalIssuer + ":" + name, Name: name, Issuer: LocalIssuer, Preset: LocalIssuer}, true
 }

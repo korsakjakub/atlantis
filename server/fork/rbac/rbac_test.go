@@ -21,6 +21,9 @@ var noEnv = func(string) string { return "" }
 
 func engine(t *testing.T, f rbac.File) *rbac.Engine {
 	t.Helper()
+	if f.DefaultRole == "" {
+		f.DefaultRole = "none"
+	}
 	e, err := rbac.New(f, noEnv)
 	Ok(t, err)
 	return e
@@ -55,9 +58,10 @@ func TestMatrix(t *testing.T) {
 		{"apply", "POST", "/api/apply", rbac.Apply, true},
 		{"remediate", "POST", "/api/drift/remediate", rbac.Apply, true},
 		{"unknown api", "GET", "/api/unknown", rbac.Admin, true},
-		{"delete lock", "DELETE", "/locks", rbac.Admin, true},
-		{"global apply lock", "POST", "/apply/lock", rbac.Admin, true},
-		{"pprof", "GET", "/debug/pprof/", rbac.Admin, true},
+		// Repo-less endpoints: only unscoped rules can grant them.
+		{"delete lock", "DELETE", "/locks", rbac.Admin, false},
+		{"global apply lock", "POST", "/apply/lock", rbac.Admin, false},
+		{"pprof", "GET", "/debug/pprof/", rbac.Admin, false},
 	}
 	repos := []struct {
 		name, repo string
@@ -93,10 +97,13 @@ func mustRole(t *testing.T, s string) rbac.Role {
 
 func serve(e *rbac.Engine, method, path, repo string, inQuery bool, id *oidc.Identity) bool {
 	target := path
-	if inQuery {
+	var body io.Reader
+	if inQuery && method == "POST" {
+		body = strings.NewReader(`{"Repository":"` + repo + `"}`) // controllers read the repo from the body
+	} else if inQuery {
 		target += "?repository=" + repo
 	}
-	r := httptest.NewRequest(method, target, nil)
+	r := httptest.NewRequest(method, target, body)
 	if id != nil {
 		r = r.WithContext(oidc.WithIdentity(r.Context(), *id))
 	}
@@ -172,8 +179,14 @@ func TestClaimMapping(t *testing.T) {
 }
 
 func TestValidationFailsFast(t *testing.T) {
+	dupUser := rbac.LocalUser{Name: "a", PasswordBcrypt: hashNoT(), Role: "viewer"}
 	bad := map[string]rbac.File{
 		"role":        {DefaultRole: "root"},
+		"no default":  {},
+		"dup vcs":     {VCSUsers: []rbac.Grant{{Username: "Al", Role: "plan"}, {Username: "al", Role: "plan"}}},
+		"dup local":   {LocalUsers: []rbac.LocalUser{dupUser, dupUser}},
+		"not bcrypt":  {LocalUsers: []rbac.LocalUser{{Name: "a", PasswordBcrypt: "plain", Role: "viewer"}}},
+		"pw only":     {LocalUsers: []rbac.LocalUser{{Name: "a", PasswordBcrypt: hashNoT(), Role: "plan"}}},
 		"claim":       {Rules: []rbac.Rule{{Claim: "foo", Value: "x", Role: "admin"}}},
 		"pattern":     {Rules: []rbac.Rule{{Claim: "groups", Value: "[", Role: "admin"}}},
 		"empty value": {Rules: []rbac.Rule{{Claim: "groups", Role: "admin"}}},
@@ -181,10 +194,13 @@ func TestValidationFailsFast(t *testing.T) {
 		"token role":  {APIToken: rbac.Grant{Role: "x"}},
 		"vcs user":    {VCSUsers: []rbac.Grant{{Role: "plan"}}},
 		"local no pw": {LocalUsers: []rbac.LocalUser{{Name: "a", Role: "admin"}}},
-		"no seed env": {LocalUsers: []rbac.LocalUser{{Name: "a", PasswordBcrypt: "x", Role: "admin", BreakGlass: true}}},
-		"bad seed":    {LocalUsers: []rbac.LocalUser{{Name: "a", PasswordBcrypt: "x", Role: "admin", BreakGlass: true, TOTPSeedEnv: "SEED"}}},
+		"no seed env": {LocalUsers: []rbac.LocalUser{{Name: "a", PasswordBcrypt: hashNoT(), Role: "admin", BreakGlass: true}}},
+		"bad seed":    {LocalUsers: []rbac.LocalUser{{Name: "a", PasswordBcrypt: hashNoT(), Role: "admin", BreakGlass: true, TOTPSeedEnv: "SEED"}}},
 	}
 	for name, f := range bad {
+		if name != "no default" && f.DefaultRole == "" {
+			f.DefaultRole = "none" // so each case fails for its own reason
+		}
 		_, err := rbac.New(f, noEnv)
 		Assert(t, err != nil, "%s: expected a validation error", name)
 	}
@@ -248,19 +264,23 @@ func TestCommandCheckerMatrix(t *testing.T) {
 	Assert(t, !idle.HasRules(), "must stay inert")
 }
 
+func hashNoT() string {
+	b, _ := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.MinCost)
+	return string(b)
+}
+
 func hash(t *testing.T, pw string) string {
 	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.MinCost)
 	Ok(t, err)
 	return string(b)
 }
 
-// totp computes the current RFC 6238 code through the public Basic+header path
-// by brute force over the seed's own algorithm is not exposed, so tests use
-// the RFC 6238 SHA1 test vector instead.
+// TestBreakGlass drives Authenticate. The stale-code case uses the RFC 6238
+// SHA1 test vector; live codes are covered in TestBreakGlassLiveCodes.
 func TestBreakGlass(t *testing.T) {
 	seed := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte("12345678901234567890"))
 	env := func(string) string { return seed }
-	e, err := rbac.New(rbac.File{LocalUsers: []rbac.LocalUser{
+	e, err := rbac.New(rbac.File{DefaultRole: "none", LocalUsers: []rbac.LocalUser{
 		{Name: "root", PasswordBcrypt: hash(t, "pw"), Role: "admin", BreakGlass: true, TOTPSeedEnv: "S"},
 		{Name: "ci", PasswordBcrypt: hash(t, "pw"), Role: "viewer"},
 	}}, env)
@@ -298,7 +318,9 @@ func TestTOTPAcceptsCurrentCodeOnceAndLocksOut(t *testing.T) {
 	g := rbac.NewTOTPGuardForTest()
 	seed := []byte("12345678901234567890")
 	now := time.Unix(59, 0)
-	Equals(t, "287082", rbac.TOTPCodeForTest(seed, uint64(now.Unix()/30))) // RFC 6238 vector
+	// RFC 6238 vector: step 1 is 59s / 30s.
+	const step = 1
+	Equals(t, "287082", rbac.TOTPCodeForTest(seed, step))
 	Assert(t, g.Check("u", seed, "287082", now), "valid code")
 	Assert(t, !g.Check("u", seed, "287082", now), "replay must fail")
 	for range 5 {

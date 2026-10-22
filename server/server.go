@@ -1015,7 +1015,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	}
 
 	// fork: RBAC (US-031). Built before OIDC because break-glass login hooks into it.
-	forkRBAC, err := newForkRBAC(userConfig)
+	forkRBAC, err := newForkRBAC(userConfig, logger)
 	if err != nil {
 		return nil, err
 	}
