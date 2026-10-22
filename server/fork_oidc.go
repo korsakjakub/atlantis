@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	forkoidc "github.com/runatlantis/atlantis/server/fork/oidc"
+	"github.com/runatlantis/atlantis/server/fork/rbac"
 	"github.com/runatlantis/atlantis/server/logging"
 	"github.com/urfave/negroni/v3"
 )
@@ -23,11 +24,12 @@ func newForkOIDC(userConfig UserConfig, logger logging.SimpleLogging) (*forkoidc
 	if err != nil {
 		return nil, err
 	}
-	m, err := forkoidc.New(context.Background(), cfg, userConfig.ForkOIDC, forkoidc.Options{
+	opts := forkoidc.Options{
 		Logger:        logger,
 		APISecret:     []byte(userConfig.APISecret),
 		AllowAPIToken: userConfig.ForkOIDCAPIToken,
-	})
+	}
+	m, err := forkoidc.New(context.Background(), cfg, userConfig.ForkOIDC, opts)
 	if err != nil {
 		return nil, fmt.Errorf("initializing oidc: %w", err)
 	}
@@ -38,5 +40,27 @@ func newForkOIDC(userConfig UserConfig, logger logging.SimpleLogging) (*forkoidc
 func (s *Server) useForkOIDC(n *negroni.Negroni) {
 	if s.ForkOIDC != nil {
 		n.Use(s.ForkOIDC)
+		if s.ForkRBAC != nil {
+			n.Use(s.ForkRBAC) // after OIDC: it needs the authenticated identity
+		}
 	}
+}
+
+// newForkRBAC loads the RBAC config. It returns nil when --fork-rbac is off.
+func newForkRBAC(userConfig UserConfig, logger logging.SimpleLogging) (*rbac.Engine, error) {
+	if !userConfig.ForkRBAC {
+		return nil, nil
+	}
+	if userConfig.ForkRBACConfig == "" {
+		return nil, errors.New("--fork-rbac requires --fork-rbac-config")
+	}
+	if userConfig.ForkOIDC == "" || userConfig.ForkOIDC == forkoidc.Off {
+		return nil, errors.New("--fork-rbac requires --fork-oidc")
+	}
+	e, err := rbac.LoadFile(userConfig.ForkRBACConfig)
+	if err != nil {
+		return nil, err
+	}
+	e.Logger = logger
+	return e, nil
 }

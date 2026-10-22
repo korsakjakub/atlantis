@@ -7,7 +7,8 @@ const (
 	ForkOIDCAPITokenFlag = "fork-oidc-api-token" // nolint: gosec // flag name, not a credential
 )
 
-func init() {
+// init registers the fork flags so cmd/server.go stays free of fork edits (upstream syncs).
+func init() { //nolint:gochecknoinits
 	stringFlags[ForkOIDCFlag] = stringFlag{
 		description: "Enable OIDC login for the web UI and API using the named preset from --fork-oidc-config. Empty or 'off' disables it (default). Fork-only feature.",
 	}

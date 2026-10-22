@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -103,9 +104,7 @@ func (f *fakeIssuer) token(w http.ResponseWriter, r *http.Request) {
 	if c.iss != "" {
 		claims["iss"] = c.iss
 	}
-	for k, v := range c.extra {
-		claims[k] = v
-	}
+	maps.Copy(claims, c.extra)
 	raw, err := jwt.Signed(signer).Claims(claims).Serialize()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -420,6 +419,24 @@ func TestMiddleware_API(t *testing.T) {
 	Equals(t, http.StatusOK, rr.Code)
 	Equals(t, "api-secret", rr.Header().Get("X-Seen-Token"))
 	Equals(t, "user-1|alice@example.com|Alice|infra", rr.Header().Get("X-Who"))
+}
+
+func TestMiddleware_Fallback(t *testing.T) {
+	e := newEnv(t, false)
+	e.mgr.SetFallback(func(r *http.Request) (oidc.Identity, bool) {
+		if r.Header.Get("X-Break") == "yes" {
+			return oidc.Identity{Subject: "local:root", Groups: []string{"g"}}, true
+		}
+		return oidc.Identity{}, false
+	})
+	brk := map[string]string{"X-Break": "yes"}
+	rr := e.do("GET", "/", nil, brk)
+	Equals(t, http.StatusOK, rr.Code)
+	Equals(t, "local:root|||g", rr.Header().Get("X-Who"))
+	Equals(t, http.StatusFound, e.do("GET", "/", nil, nil).Code) // no session, no fallback identity
+	// A fallback identity is a session: the API secret is still required.
+	Equals(t, http.StatusUnauthorized, e.do("POST", "/api/plan", nil, brk).Code)
+	Equals(t, http.StatusOK, e.do("POST", "/api/plan", nil, map[string]string{"X-Break": "yes", "X-Atlantis-Token": "api-secret"}).Code)
 }
 
 func TestMiddleware_APITokenAlternative(t *testing.T) {

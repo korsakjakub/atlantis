@@ -10,7 +10,7 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 }
 
 // IdentityFromContext returns the OIDC identity of the request, if any.
-// It is deliberately not wired into models.User or the allowlists (US-031).
+// Roles are resolved from it by server/fork/rbac (US-031).
 func IdentityFromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(identityKey{}).(Identity)
 	return id, ok
