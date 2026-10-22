@@ -323,7 +323,7 @@ func (m *Manager) cookie(name, value, path string, expires time.Time) *http.Cook
 }
 
 func (m *Manager) expire(name, path string) *http.Cookie {
-	c := m.cookie(name, "", path, time.Unix(0, 0))
+	c := m.cookie(name, "", path, time.Unix(0, 0)) // nolint: gosec // G124: attributes are set inside the m.cookie helper
 	c.MaxAge = -1
 	return c
 }
